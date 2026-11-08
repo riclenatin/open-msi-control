@@ -69,8 +69,10 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-; Setup is elevated, so the app (requireAdministrator manifest) starts without another prompt.
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; Post-install entries run as the original (non-elevated) user, and CreateProcess cannot start
+; an exe whose manifest requires elevation (ERROR_ELEVATION_REQUIRED). ShellExecute can: it
+; shows the UAC prompt, and the app then runs for the signed-in user, not the installing admin.
+Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent shellexec
 
 ; User settings are kept on uninstall.
 [UninstallRun]

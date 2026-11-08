@@ -2,8 +2,12 @@
 //!
 //! A hidden top-level window receives the icon's callbacks on the UI thread (gpui's message
 //! loop dispatches it) and forwards them over a channel to the app.
+//!
+//! The context menu runs a modal loop that keeps pumping gpui's messages, so it must not run
+//! inside a gpui callback (re-entering the app panics). The app publishes the menu items with
+//! [`Tray::set_menu`]; the window procedure shows them and sends back the chosen index.
 
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryW};
@@ -28,19 +32,22 @@ const ICON_ID: u32 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TrayEvent {
-    /// Left click: show or hide the window.
+    /// Left click: open or close the flyout.
     Toggle,
-    /// Right click: open the context menu.
-    Menu,
+    /// An item of the context menu was chosen (index into the last [`Tray::set_menu`] list).
+    MenuPick(usize),
     /// Another instance was started.
     ShowRequested,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MenuItem {
     Action { label: String, checked: bool },
     Separator,
 }
+
+/// Items of the context menu, kept current by the app.
+static MENU: Mutex<Vec<MenuItem>> = Mutex::new(Vec::new());
 
 static EVENTS: OnceLock<flume::Sender<TrayEvent>> = OnceLock::new();
 static TASKBAR_CREATED: OnceLock<u32> = OnceLock::new();
@@ -63,7 +70,12 @@ extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM)
         WM_TRAY => {
             match lparam.0 as u32 {
                 WM_LBUTTONUP => send(TrayEvent::Toggle),
-                WM_RBUTTONUP | WM_CONTEXTMENU => send(TrayEvent::Menu),
+                WM_RBUTTONUP | WM_CONTEXTMENU => {
+                    let items = MENU.lock().map(|m| m.clone()).unwrap_or_default();
+                    if let Some(i) = show_menu(hwnd, &items) {
+                        send(TrayEvent::MenuPick(i));
+                    }
+                }
                 _ => {}
             }
             LRESULT(0)
@@ -179,39 +191,49 @@ impl Tray {
         }
     }
 
-    /// Shows the menu at the cursor and returns the index of the chosen action, if any.
-    /// Blocks (pumping messages) until the menu closes.
-    pub fn show_menu(&self, items: &[MenuItem]) -> Option<usize> {
-        // SAFETY: menu handle is created, used and destroyed within this call on the UI thread.
-        unsafe {
-            let menu = CreatePopupMenu().ok()?;
-            for (i, item) in items.iter().enumerate() {
-                let _ = match item {
-                    MenuItem::Action { label, checked } => {
-                        let wide: Vec<u16> = label.encode_utf16().chain(Some(0)).collect();
-                        let flags = if *checked { MF_STRING | MF_CHECKED } else { MF_STRING };
-                        AppendMenuW(menu, flags, i + 1, PCWSTR(wide.as_ptr()))
-                    }
-                    MenuItem::Separator => AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null()),
-                };
-            }
-            let mut pt = POINT::default();
-            let _ = GetCursorPos(&mut pt);
-            // Required so the menu closes when the user clicks elsewhere.
-            let _ = SetForegroundWindow(self.hwnd);
-            let chosen = TrackPopupMenu(
-                menu,
-                TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN,
-                pt.x,
-                pt.y,
-                None,
-                self.hwnd,
-                None,
-            );
-            let _ = PostMessageW(Some(self.hwnd), WM_NULL, WPARAM(0), LPARAM(0));
-            let _ = DestroyMenu(menu);
-            usize::try_from(chosen.0).ok().filter(|&c| c > 0).map(|c| c - 1)
+    /// Replaces the context menu items (cheap; call whenever they may have changed).
+    pub fn set_menu(&self, items: Vec<MenuItem>) {
+        if let Ok(mut m) = MENU.lock() {
+            *m = items;
         }
+    }
+}
+
+/// Shows the menu at the cursor and returns the index of the chosen action, if any.
+/// Blocks (pumping messages) until the menu closes.
+fn show_menu(hwnd: HWND, items: &[MenuItem]) -> Option<usize> {
+    if items.is_empty() {
+        return None;
+    }
+    // SAFETY: menu handle is created, used and destroyed within this call on the UI thread.
+    unsafe {
+        let menu = CreatePopupMenu().ok()?;
+        for (i, item) in items.iter().enumerate() {
+            let _ = match item {
+                MenuItem::Action { label, checked } => {
+                    let wide: Vec<u16> = label.encode_utf16().chain(Some(0)).collect();
+                    let flags = if *checked { MF_STRING | MF_CHECKED } else { MF_STRING };
+                    AppendMenuW(menu, flags, i + 1, PCWSTR(wide.as_ptr()))
+                }
+                MenuItem::Separator => AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null()),
+            };
+        }
+        let mut pt = POINT::default();
+        let _ = GetCursorPos(&mut pt);
+        // Required so the menu closes when the user clicks elsewhere.
+        let _ = SetForegroundWindow(hwnd);
+        let chosen = TrackPopupMenu(
+            menu,
+            TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN,
+            pt.x,
+            pt.y,
+            None,
+            hwnd,
+            None,
+        );
+        let _ = PostMessageW(Some(hwnd), WM_NULL, WPARAM(0), LPARAM(0));
+        let _ = DestroyMenu(menu);
+        usize::try_from(chosen.0).ok().filter(|&c| c > 0).map(|c| c - 1)
     }
 }
 

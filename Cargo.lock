@@ -2694,7 +2694,7 @@ dependencies = [
 
 [[package]]
 name = "msi-acpi"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -2703,7 +2703,7 @@ dependencies = [
 
 [[package]]
 name = "msi-probe"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "msi-acpi",
 ]
@@ -2984,7 +2984,7 @@ dependencies = [
 
 [[package]]
 name = "open-msi-control"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "embed-resource",

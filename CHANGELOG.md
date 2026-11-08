@@ -5,6 +5,15 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-08
+
+### Fixed
+
+- Right-clicking the tray icon crashed the app: the menu's modal loop re-entered gpui. The menu now
+  runs from the tray window's own message handler.
+- "Launch Open MSI Control" at the end of setup failed because setup started the elevated app
+  without a UAC prompt; it now goes through ShellExecute.
+
 ## [0.1.0] - 2026-11-08
 
 ### Added
@@ -35,5 +44,6 @@ All notable changes are documented here. The format follows
   refuse to write. Unknown firmware uses the Cyborg 15 layout and the header says *Model not
   recognised*. `msi-probe` prints the matched config and the layout in use.
 
-[Unreleased]: https://github.com/riclenatin/open-msi-control/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/riclenatin/open-msi-control/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/riclenatin/open-msi-control/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/riclenatin/open-msi-control/releases/tag/v0.1.0

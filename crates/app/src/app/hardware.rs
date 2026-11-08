@@ -46,6 +46,7 @@ impl MsiApp {
                             if let (Some(tray), Some(s)) = (&this.tray, &this.snap) {
                                 tray.set_tooltip(&(this.tr().tray_tooltip)(s.cpu.temp_c, s.gpu.temp_c));
                             }
+                            this.refresh_tray_menu();
                         }
                         Err(e) => this.error = Some(format!("{}: {e}", this.tr().read_failed).into()),
                     }

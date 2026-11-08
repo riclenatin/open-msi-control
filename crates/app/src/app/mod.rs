@@ -102,6 +102,8 @@ pub struct MsiApp {
     flyout: Option<WindowHandle<Flyout>>,
     /// When the flyout last closed (clicking the tray icon closes it first; don't reopen).
     flyout_closed_at: Option<Instant>,
+    /// What each item of the published tray menu does (same order as the items).
+    menu_picks: Vec<Option<shell::MenuPick>>,
     /// Bumped on every write; polls requested before a write are discarded.
     write_gen: u64,
     /// Profile enforcement window after boot, wake or power change: `(until, forced)`, where
@@ -151,6 +153,7 @@ impl MsiApp {
             main_window: window.window_handle(),
             flyout: None,
             flyout_closed_at: None,
+            menu_picks: Vec::new(),
             write_gen: 0,
             enforce_until: None,
             last_poll: None,

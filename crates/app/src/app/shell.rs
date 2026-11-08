@@ -14,11 +14,22 @@ use crate::tray::{MenuItem, Tray, TrayEvent};
 use crate::views::{Flyout, flyout};
 use crate::{autostart, platform};
 
+/// What a tray menu item does.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum MenuPick {
+    Open,
+    Scenario(Scenario),
+    /// Resolved against the state at click time, not when the menu was built.
+    ToggleBoost,
+    Exit,
+}
+
 impl MsiApp {
     pub(super) fn init_tray(&mut self, window: &mut Window, cx: &mut Context<Self>, start_hidden: bool) {
         match Tray::create(&(self.tr().tray_tooltip)(None, None)) {
             Ok((tray, events)) => {
                 self.tray = Some(tray);
+                self.refresh_tray_menu();
                 cx.spawn_in(window, async move |this, cx| {
                     while let Ok(event) = events.recv_async().await {
                         if this.update_in(cx, |this, window, cx| this.on_tray(event, window, cx)).is_err() {
@@ -59,7 +70,7 @@ impl MsiApp {
         match event {
             TrayEvent::Toggle => self.toggle_flyout(cx),
             TrayEvent::ShowRequested => platform::show_window(window),
-            TrayEvent::Menu => self.tray_menu(window, cx),
+            TrayEvent::MenuPick(i) => self.on_menu_pick(i, window, cx),
         }
     }
 
@@ -121,22 +132,16 @@ impl MsiApp {
         });
     }
 
-    /// Quick actions: open, scenarios, Cooler Boost, quit — the ones the model supports.
-    fn tray_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        #[derive(Clone, Copy)]
-        enum Pick {
-            Open,
-            Scenario(Scenario),
-            Boost(bool),
-            Exit,
-        }
+    /// Publishes the quick actions (open, scenarios, Cooler Boost, quit — the ones the model
+    /// supports) to the tray menu. Called after every reading and language change.
+    pub(super) fn refresh_tray_menu(&mut self) {
         let Some(tray) = &self.tray else { return };
         let tr = self.tr();
         let snap = self.snap.as_ref();
         // `picks[i]` is what item `i` does; separators do nothing.
         let mut items = Vec::new();
         let mut picks = Vec::new();
-        let mut push = |item: Option<(&str, bool, Pick)>| match item {
+        let mut push = |item: Option<(&str, bool, MenuPick)>| match item {
             Some((label, checked, pick)) => {
                 items.push(MenuItem::Action { label: label.to_owned(), checked });
                 picks.push(Some(pick));
@@ -146,24 +151,32 @@ impl MsiApp {
                 picks.push(None);
             }
         };
-        push(Some((tr.tray_open, false, Pick::Open)));
+        push(Some((tr.tray_open, false, MenuPick::Open)));
         push(None);
         let scenarios = snap.map_or(Scenarios::default(), |s| s.scenarios);
         for (i, sc) in Scenario::ALL.into_iter().enumerate().filter(|&(_, sc)| scenarios.contains(sc)) {
-            push(Some((tr.scenarios[i], snap.and_then(|s| s.scenario) == Some(sc), Pick::Scenario(sc))));
+            push(Some((tr.scenarios[i], snap.and_then(|s| s.scenario) == Some(sc), MenuPick::Scenario(sc))));
         }
         if let Some(on) = snap.and_then(|s| s.cooler_boost) {
             push(None);
-            push(Some(("Cooler Boost", on, Pick::Boost(!on))));
+            push(Some(("Cooler Boost", on, MenuPick::ToggleBoost)));
         }
         push(None);
-        push(Some((tr.tray_exit, false, Pick::Exit)));
+        push(Some((tr.tray_exit, false, MenuPick::Exit)));
+        tray.set_menu(items);
+        self.menu_picks = picks;
+    }
 
-        match tray.show_menu(&items).and_then(|i| picks.get(i).copied().flatten()) {
-            Some(Pick::Open) => platform::show_window(window),
-            Some(Pick::Scenario(sc)) => self.set_scenario(sc, false, cx),
-            Some(Pick::Boost(on)) => self.set_cooler_boost(on, false, cx),
-            Some(Pick::Exit) => self.quit(cx),
+    fn on_menu_pick(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        match self.menu_picks.get(index).copied().flatten() {
+            Some(MenuPick::Open) => platform::show_window(window),
+            Some(MenuPick::Scenario(sc)) => self.set_scenario(sc, false, cx),
+            Some(MenuPick::ToggleBoost) => {
+                if let Some(on) = self.snap.as_ref().and_then(|s| s.cooler_boost) {
+                    self.set_cooler_boost(!on, false, cx);
+                }
+            }
+            Some(MenuPick::Exit) => self.quit(cx),
             None => {}
         }
     }
@@ -185,6 +198,7 @@ impl MsiApp {
         self.lang = lang;
         self.settings.language = Some(lang);
         self.settings.save();
+        self.refresh_tray_menu();
         cx.notify();
     }
 
