@@ -53,6 +53,9 @@ icons! {
     Reset => "arrow-counter-clockwise.svg",
     Info => "info.svg",
     Globe => "globe.svg",
+    Gear => "gear.svg",
+    Power => "power.svg",
+    Tray => "tray.svg",
     Minimize => "minus.svg",
     Close => "x.svg",
 }

@@ -2987,9 +2987,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "embed-resource",
+ "flume",
  "gpui",
  "image",
  "msi-acpi",
+ "raw-window-handle",
  "windows",
 ]
 

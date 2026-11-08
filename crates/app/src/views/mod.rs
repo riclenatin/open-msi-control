@@ -4,6 +4,7 @@ mod battery;
 mod fans;
 mod header;
 mod mode;
+mod settings;
 mod system;
 mod telemetry;
 
@@ -72,6 +73,7 @@ impl MsiApp {
                 .child(enter(self.render_fans(window, cx), 2))
                 .child(enter(self.render_battery(window, cx), 3))
                 .child(enter(self.render_system(window, cx), 4))
+                .child(enter(self.render_settings(window, cx), 5))
                 .child(
                     div()
                         .flex()

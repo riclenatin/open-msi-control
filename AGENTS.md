@@ -22,6 +22,9 @@ battery parts of MSI Center on MSI laptops. It talks to the firmware through the
 | `crates/app/src/charts/` | Canvas-painted charts (timeline, fan curve, tick gauge, meters). |
 | `crates/app/src/theme/` | OKLCH tokens + WCAG contrast tests. |
 | `crates/app/src/motion.rs` | Easing curves, durations, interruptible `Transitions`. |
+| `crates/app/src/tray.rs` | Tray icon (Shell_NotifyIcon) on a hidden window; events reach the app over a channel. |
+| `crates/app/src/autostart.rs` | Start-with-Windows Task Scheduler task (`--tray`, highest privileges). |
+| `crates/app/src/i18n.rs` | RU/EN string tables. |
 | `crates/probe` | `msi-probe.exe`: read-only dump for new-model reports. |
 | `assets/` | Bundled Geist fonts (OFL) and Phosphor icons (MIT). |
 

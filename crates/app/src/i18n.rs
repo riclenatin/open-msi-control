@@ -81,6 +81,15 @@ pub struct Strings {
     pub usb_share_info: &'static str,
     pub language: &'static str,
 
+    pub app: &'static str,
+    pub autostart: &'static str,
+    pub autostart_info: &'static str,
+    pub close_to_tray: &'static str,
+    pub close_to_tray_info: &'static str,
+    pub tray_open: &'static str,
+    pub tray_exit: &'static str,
+    pub tray_tooltip: fn(Option<u8>, Option<u8>) -> String,
+
     pub err_scenario: &'static str,
     pub err_cooler_boost: &'static str,
     pub err_backlight: &'static str,
@@ -90,6 +99,7 @@ pub struct Strings {
     pub err_curve: &'static str,
     pub err_auto_fan: &'static str,
     pub err_battery: &'static str,
+    pub err_autostart: &'static str,
 }
 
 pub static RU: Strings = Strings {
@@ -153,6 +163,18 @@ pub static RU: Strings = Strings {
                      — можно заряжать телефон.",
     language: "Язык",
 
+    app: "Приложение",
+    autostart: "Запускать вместе с Windows",
+    autostart_info: "Приложение стартует свёрнутым в трей при входе в Windows. Используется \
+                     Планировщик заданий: так оно запускается с правами администратора без \
+                     запроса UAC.",
+    close_to_tray: "Сворачивать в трей при закрытии",
+    close_to_tray_info: "Крестик прячет окно в трей, датчики продолжают обновляться. \
+                         Выйти — через меню значка в трее.",
+    tray_open: "Открыть",
+    tray_exit: "Выход",
+    tray_tooltip: |cpu, gpu| format!("Open MSI Control\nCPU {} · GPU {}", temp(cpu), temp(gpu)),
+
     err_scenario: "Сценарий",
     err_cooler_boost: "Cooler Boost",
     err_backlight: "Подсветка",
@@ -162,6 +184,7 @@ pub static RU: Strings = Strings {
     err_curve: "Кривая вентиляторов",
     err_auto_fan: "Авто-режим вентиляторов",
     err_battery: "Лимит заряда",
+    err_autostart: "Автозапуск",
 };
 
 pub static EN: Strings = Strings {
@@ -224,6 +247,17 @@ pub static EN: Strings = Strings {
                      so you can charge a phone.",
     language: "Language",
 
+    app: "App",
+    autostart: "Start with Windows",
+    autostart_info: "Starts minimised to the tray when you sign in. Uses Task Scheduler so it \
+                     runs as Administrator without a UAC prompt.",
+    close_to_tray: "Close to tray",
+    close_to_tray_info: "The close button hides the window to the tray; sensors keep updating. \
+                         Quit from the tray icon menu.",
+    tray_open: "Open",
+    tray_exit: "Quit",
+    tray_tooltip: |cpu, gpu| format!("Open MSI Control\nCPU {} · GPU {}", temp(cpu), temp(gpu)),
+
     err_scenario: "Scenario",
     err_cooler_boost: "Cooler Boost",
     err_backlight: "Backlight",
@@ -233,7 +267,12 @@ pub static EN: Strings = Strings {
     err_curve: "Fan curve",
     err_auto_fan: "Auto fan mode",
     err_battery: "Charge limit",
+    err_autostart: "Start with Windows",
 };
+
+fn temp(t: Option<u8>) -> String {
+    t.map_or("—".to_owned(), |v| format!("{v}°"))
+}
 
 #[cfg(test)]
 mod tests {

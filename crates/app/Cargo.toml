@@ -23,10 +23,16 @@ anyhow.workspace = true
 image.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+flume = "0.11"
+raw-window-handle = "0.6"
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Globalization",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
     "Win32_System_Registry",
+    "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
 

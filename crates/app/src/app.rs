@@ -13,8 +13,9 @@ use crate::i18n::{Lang, Strings};
 use crate::motion::Transitions;
 use crate::telemetry::{History, POLL};
 use crate::theme::theme;
+use crate::tray::{MenuItem, Tray, TrayEvent};
 use crate::ui::{DragEvent, Handler};
-use crate::{dither, platform};
+use crate::{autostart, dither, platform};
 
 actions!(open_msi_control, [FocusNext, FocusPrev]);
 
@@ -69,6 +70,11 @@ pub struct MsiApp {
     /// focus-on-click calls `prevent_default`, which would swallow title-bar drags.
     pub(crate) focus: FocusHandle,
     pub(crate) lang: Lang,
+    /// Tray icon; `None` if it could not be created (then closing the window quits).
+    tray: Option<Tray>,
+    pub(crate) close_to_tray: bool,
+    /// Start-with-Windows task state; `None` while it is being queried.
+    pub(crate) autostart: Option<bool>,
     /// Bumped on every write; polls requested before a write are discarded.
     write_gen: u64,
     _poll: Option<Task<()>>,
@@ -76,10 +82,14 @@ pub struct MsiApp {
 }
 
 impl MsiApp {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    /// `start_hidden`: launched by autostart; stay in the tray until the icon is clicked.
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, start_hidden: bool) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus);
-        let this = Self {
+        let lang = platform::load_setting("language")
+            .and_then(|code| Lang::from_code(&code))
+            .unwrap_or_else(|| Lang::from_windows_ui(platform::ui_language()));
+        let mut this = Self {
             conn: Connection::Connecting,
             info: None,
             model: platform::model_name(),
@@ -97,19 +107,144 @@ impl MsiApp {
             snap_frame: false,
             dither: dither::render(),
             focus,
-            lang: platform::load_setting("language")
-                .and_then(|code| Lang::from_code(&code))
-                .unwrap_or_else(|| Lang::from_windows_ui(platform::ui_language())),
+            lang,
+            tray: None,
+            close_to_tray: platform::load_setting("close_to_tray").is_none_or(|v| v != "0"),
+            autostart: None,
             write_gen: 0,
             _poll: None,
             battery_write: None,
         };
+        this.init_tray(window, cx, start_hidden);
         cx.spawn(async move |this, cx| {
             let res = cx.background_executor().spawn(async move { HwWorker::spawn() }).await;
             this.update(cx, |this, cx| this.on_connected(res, cx)).ok();
         })
         .detach();
+        cx.spawn(async move |this, cx| {
+            let enabled = cx.background_executor().spawn(async { autostart::is_enabled() }).await;
+            this.update(cx, |this, cx| {
+                this.autostart = Some(enabled);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
         this
+    }
+
+    fn init_tray(&mut self, window: &mut Window, cx: &mut Context<Self>, start_hidden: bool) {
+        match Tray::create(&(self.tr().tray_tooltip)(None, None)) {
+            Ok((tray, events)) => {
+                self.tray = Some(tray);
+                cx.spawn_in(window, async move |this, cx| {
+                    while let Ok(event) = events.recv_async().await {
+                        if this.update_in(cx, |this, window, cx| this.on_tray(event, window, cx)).is_err() {
+                            break;
+                        }
+                    }
+                })
+                .detach();
+            }
+            Err(e) => {
+                eprintln!("tray icon unavailable: {e}");
+                // Without a tray there would be no way back to a hidden window.
+                if start_hidden {
+                    platform::show_window(window);
+                }
+            }
+        }
+        // The close button hides to the tray (if enabled); otherwise remove the icon and quit.
+        let weak = cx.entity().downgrade();
+        window.on_window_should_close(cx, move |window, cx| {
+            let hide = weak
+                .update(cx, |this, _| {
+                    let hide = this.tray.is_some() && this.close_to_tray;
+                    if !hide {
+                        this.tray = None;
+                    }
+                    hide
+                })
+                .unwrap_or(false);
+            if hide {
+                platform::hide_window(window);
+            }
+            !hide
+        });
+    }
+
+    fn on_tray(&mut self, event: TrayEvent, window: &mut Window, cx: &mut Context<Self>) {
+        match event {
+            TrayEvent::Toggle if platform::is_window_visible(window) => platform::hide_window(window),
+            TrayEvent::Toggle | TrayEvent::ShowRequested => platform::show_window(window),
+            TrayEvent::Menu => self.tray_menu(window, cx),
+        }
+    }
+
+    /// Quick actions: open, scenarios, Cooler Boost, quit.
+    fn tray_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(tray) = &self.tray else { return };
+        let tr = self.tr();
+        let snap = self.snap.as_ref();
+        let action = |label: &str, checked: bool| MenuItem::Action { label: label.to_owned(), checked };
+        let mut items = vec![action(tr.tray_open, false), MenuItem::Separator];
+        for (i, sc) in Scenario::ALL.into_iter().enumerate() {
+            items.push(action(tr.scenarios[i], snap.and_then(|s| s.scenario) == Some(sc)));
+        }
+        items.push(MenuItem::Separator);
+        items.push(action("Cooler Boost", snap.is_some_and(|s| s.cooler_boost)));
+        items.push(MenuItem::Separator);
+        items.push(action(tr.tray_exit, false));
+
+        const SCENARIOS: usize = 2;
+        let boost = SCENARIOS + Scenario::ALL.len() + 1;
+        let exit = boost + 2;
+        match tray.show_menu(&items) {
+            Some(0) => platform::show_window(window),
+            Some(i) if (SCENARIOS..SCENARIOS + Scenario::ALL.len()).contains(&i) => {
+                self.set_scenario(Scenario::ALL[i - SCENARIOS], false, cx);
+            }
+            Some(i) if i == boost => {
+                let on = !self.snap.as_ref().is_some_and(|s| s.cooler_boost);
+                self.set_cooler_boost(on, false, cx);
+            }
+            Some(i) if i == exit => {
+                self.tray = None;
+                cx.quit();
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn set_close_to_tray(&mut self, on: bool, keyboard: bool, cx: &mut Context<Self>) {
+        self.snap_frame |= keyboard;
+        self.close_to_tray = on;
+        platform::save_setting("close_to_tray", if on { "1" } else { "0" });
+        cx.notify();
+    }
+
+    pub(crate) fn set_autostart(&mut self, on: bool, keyboard: bool, cx: &mut Context<Self>) {
+        self.snap_frame |= keyboard;
+        self.autostart = Some(on);
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let res = cx
+                .background_executor()
+                .spawn(async move { autostart::set_enabled(on).map(|()| autostart::is_enabled()) })
+                .await;
+            this.update(cx, |this, cx| {
+                match res {
+                    Ok(actual) => this.autostart = Some(actual),
+                    Err(e) => {
+                        this.error = Some(format!("{}: {e}", this.tr().err_autostart).into());
+                        this.autostart = Some(!on);
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub(crate) fn tr(&self) -> &'static Strings {
@@ -150,6 +285,9 @@ impl MsiApp {
                             this.history.push(&snap);
                             if this.write_gen == generation {
                                 this.snap = Some(snap);
+                            }
+                            if let (Some(tray), Some(s)) = (&this.tray, &this.snap) {
+                                tray.set_tooltip(&(this.tr().tray_tooltip)(s.cpu.temp_c, s.gpu.temp_c));
                             }
                         }
                         Err(e) => this.error = Some(format!("{}: {e}", this.tr().read_failed).into()),

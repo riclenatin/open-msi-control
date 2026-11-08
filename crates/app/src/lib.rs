@@ -2,8 +2,12 @@
 //!
 //! The binary (`main.rs`) only calls [`run`]; everything lives here so tests run unelevated.
 
+#[cfg(not(windows))]
+compile_error!("open-msi-control is a Windows application (MSI_ACPI is a Windows WMI interface)");
+
 mod app;
 mod assets;
+mod autostart;
 mod charts;
 mod dither;
 mod i18n;
@@ -11,6 +15,7 @@ mod motion;
 mod platform;
 mod telemetry;
 mod theme;
+mod tray;
 mod ui;
 mod views;
 
@@ -24,9 +29,12 @@ use gpui::{
 use crate::app::{FocusNext, FocusPrev, MsiApp};
 use crate::assets::{Assets, FONTS};
 
-/// Starts the application and blocks until the window closes.
+/// Starts the application and blocks until it quits. `--tray` (used by autostart) starts with
+/// the window hidden in the tray. A second instance just shows the first one's window.
 pub fn run() {
-    Application::new().with_assets(Assets).run(|cx: &mut App| {
+    let Some(_instance) = platform::claim_single_instance() else { return };
+    let start_hidden = std::env::args().any(|a| a == autostart::TRAY_FLAG);
+    Application::new().with_assets(Assets).run(move |cx: &mut App| {
         if let Err(e) = cx.text_system().add_fonts(FONTS.iter().map(|f| Cow::Borrowed(*f)).collect()) {
             eprintln!("failed to load bundled fonts, falling back to system UI font: {e}");
         }
@@ -52,15 +60,19 @@ pub fn run() {
                 }),
                 window_min_size: Some(size(px(420.), px(520.))),
                 window_background: WindowBackgroundAppearance::Opaque,
+                show: !start_hidden,
+                focus: !start_hidden,
                 ..Default::default()
             },
-            |window, cx| cx.new(|cx| MsiApp::new(window, cx)),
+            |window, cx| cx.new(|cx| MsiApp::new(window, cx, start_hidden)),
         );
         if let Err(e) = opened {
             eprintln!("cannot open window: {e}");
             cx.quit();
             return;
         }
-        cx.activate(true);
+        if !start_hidden {
+            cx.activate(true);
+        }
     });
 }

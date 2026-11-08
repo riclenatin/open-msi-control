@@ -4,6 +4,7 @@
 mod button;
 mod drag;
 mod pill;
+mod row;
 mod segmented;
 mod surface;
 mod switch;
@@ -17,6 +18,7 @@ use gpui::{App, Window};
 pub use button::{Button, Variant};
 pub use drag::{DragEvent, register_drag};
 pub use pill::{Tone, pill};
+pub use row::control_row;
 pub use segmented::{Width, segmented};
 pub use surface::{card, icon, inset};
 pub use switch::SwitchRow;

@@ -15,6 +15,10 @@ MSI laptops. Native Rust, GPU-rendered UI ([gpui](https://gpui.rs)), no backgrou
   stay monotonic and never exceed the firmware's top point. Auto mode and Cooler Boost.
 - **Battery charge limit** — slider (40–100 %) and the Battery Master presets (100/80/60 %).
 - **System** — keyboard backlight, webcam kill switch, Win/Fn swap, USB power share.
+- **Tray** — close to tray, left click shows/hides the window, right click opens quick actions
+  (scenarios, Cooler Boost, quit); the icon tooltip shows CPU/GPU temperatures. One instance only.
+- **Start with Windows** — a Task Scheduler logon task starts the app elevated in the tray without
+  a UAC prompt (it runs on battery too).
 - Russian and English UI (follows the Windows display language, switchable in System), (i) hints
   explaining every setting.
 - Keyboard navigation (Tab, arrows, Enter/Space) with focus rings, WCAG AA contrast, honours the

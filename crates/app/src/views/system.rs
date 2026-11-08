@@ -1,38 +1,9 @@
-use gpui::{Context, Div, SharedString, Window, div, prelude::*, px};
+use gpui::{Context, SharedString, Window, div, prelude::*, px};
 
 use crate::app::MsiApp;
 use crate::assets::Icon;
-use crate::i18n::Lang;
 use crate::motion::{self, Spec};
-use crate::theme::theme;
-use crate::ui::{SwitchRow, Width, card, icon, info, inset, segmented};
-
-/// Label row with a trailing control (backlight level, language).
-fn control_row(
-    glyph: Icon,
-    active: bool,
-    label: &'static str,
-    explain: Option<&'static str>,
-    control: impl IntoElement,
-) -> Div {
-    let t = theme();
-    div()
-        .flex()
-        .items_center()
-        .gap(px(10.))
-        .pl(px(12.))
-        .child(icon(glyph, 15., if active { t.accent } else { t.text_muted }))
-        .child(
-            div()
-                .flex()
-                .flex_1()
-                .items_center()
-                .gap(px(4.))
-                .child(div().text_size(px(13.)).child(label))
-                .children(explain.map(|text| info(label, text))),
-        )
-        .child(control)
-}
+use crate::ui::{SwitchRow, Width, card, control_row, inset, segmented};
 
 impl MsiApp {
     pub(crate) fn render_system(
@@ -56,22 +27,6 @@ impl MsiApp {
             window,
             MsiApp::handler(cx, |this, (i, kb): (usize, bool), _, cx| {
                 this.set_kbd_backlight(i as u8, kb, cx)
-            }),
-        );
-
-        let lang_index = Lang::ALL.iter().position(|&l| l == self.lang).unwrap_or(0);
-        let lang_at = self.transitions.animate(("lang", 0), lang_index as f32, Spec::movement(motion::MOVE));
-        let lang = segmented(
-            "language",
-            &[SharedString::from("RU"), SharedString::from("EN")],
-            Some(lang_index),
-            lang_at,
-            Width::Content,
-            ring,
-            window,
-            MsiApp::handler(cx, |this, (i, kb): (usize, bool), _, cx| {
-                this.snap_frame |= kb;
-                this.set_lang(Lang::ALL[i], cx);
             }),
         );
 
@@ -130,6 +85,5 @@ impl MsiApp {
         card(Icon::Sliders, tr.system, None, None)
             .child(control_row(Icon::Keyboard, level > 0, tr.backlight, Some(tr.backlight_info), kbd))
             .child(inset().p(px(2.)).children(webcam).child(win_fn).children(usb))
-            .child(control_row(Icon::Globe, false, tr.language, None, lang))
     }
 }
