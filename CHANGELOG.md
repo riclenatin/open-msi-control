@@ -28,3 +28,7 @@ All notable changes are documented here. The format follows
 - Daily update check against GitHub Releases; installer and portable zip.
 - Settings stored in `%APPDATA%\open-msi-control\settings.json`.
 - Licensed under GPL-2.0-or-later.
+- Other MSI WMI 2.x models: the EC register layout is picked by EC firmware from the Linux msi-ec
+  table (21 configs, 373 firmware versions); controls a model lacks are hidden and their setters
+  refuse to write. Unknown firmware uses the Cyborg 15 layout and the header says *Model not
+  recognised*. `msi-probe` prints the matched config and the layout in use.

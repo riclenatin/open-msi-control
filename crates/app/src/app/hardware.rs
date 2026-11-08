@@ -112,12 +112,17 @@ impl MsiApp {
 
     pub(crate) fn set_cooler_boost(&mut self, on: bool, keyboard: bool, cx: &mut Context<Self>) {
         self.snap_frame |= keyboard;
-        self.act(|t| t.err_cooler_boost, |s| s.cooler_boost = on, move |l| l.set_cooler_boost(on), cx);
+        self.act(|t| t.err_cooler_boost, |s| s.cooler_boost = Some(on), move |l| l.set_cooler_boost(on), cx);
     }
 
     pub(crate) fn set_kbd_backlight(&mut self, level: u8, keyboard: bool, cx: &mut Context<Self>) {
         self.snap_frame |= keyboard;
-        self.act(|t| t.err_backlight, |s| s.kbd_backlight = level, move |l| l.set_kbd_backlight(level), cx);
+        self.act(
+            |t| t.err_backlight,
+            |s| s.kbd_backlight = Some(level),
+            move |l| l.set_kbd_backlight(level),
+            cx,
+        );
     }
 
     pub(crate) fn set_webcam(&mut self, on: bool, keyboard: bool, cx: &mut Context<Self>) {
@@ -127,7 +132,12 @@ impl MsiApp {
 
     pub(crate) fn set_win_fn(&mut self, swapped: bool, keyboard: bool, cx: &mut Context<Self>) {
         self.snap_frame |= keyboard;
-        self.act(|t| t.err_win_fn, |s| s.win_fn_swapped = swapped, move |l| l.set_win_fn_swap(swapped), cx);
+        self.act(
+            |t| t.err_win_fn,
+            |s| s.win_fn_swapped = Some(swapped),
+            move |l| l.set_win_fn_swap(swapped),
+            cx,
+        );
     }
 
     pub(crate) fn set_usb_share(&mut self, on: bool, keyboard: bool, cx: &mut Context<Self>) {

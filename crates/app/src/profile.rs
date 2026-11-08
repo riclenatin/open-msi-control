@@ -18,6 +18,7 @@ pub struct Profile {
     /// `None` when the firmware was in a mode no scenario matches; left alone then.
     pub scenario: Option<Scenario>,
     pub fan: FanProfile,
+    /// Ignored on models without Cooler Boost.
     pub cooler_boost: bool,
 }
 
@@ -31,7 +32,7 @@ impl Profile {
             } else {
                 FanProfile::Auto
             },
-            cooler_boost: s.cooler_boost,
+            cooler_boost: s.cooler_boost.unwrap_or(false),
         }
     }
 }
@@ -51,9 +52,11 @@ pub enum Op {
 }
 
 /// Writes that bring `s` to `profile` (+ `charge_limit`), in a safe order; empty if in sync.
+/// Features the model lacks are never planned.
 pub fn plan(s: &Snapshot, profile: &Profile, charge_limit: Option<u8>) -> Vec<Op> {
     let mut ops = Vec::new();
     if let Some(sc) = profile.scenario
+        && s.scenarios.contains(sc)
         && s.scenario != Some(sc)
     {
         ops.push(Op::Scenario(sc));
@@ -71,11 +74,13 @@ pub fn plan(s: &Snapshot, profile: &Profile, charge_limit: Option<u8>) -> Vec<Op
             }
         }
     }
-    if s.cooler_boost != profile.cooler_boost {
+    if let Some(on) = s.cooler_boost
+        && on != profile.cooler_boost
+    {
         ops.push(Op::CoolerBoost(profile.cooler_boost));
     }
-    if let Some(limit) = charge_limit
-        && s.battery_limit.unwrap_or(100) != limit
+    if let (Some(limit), Some(current)) = (charge_limit, s.charge_limit)
+        && current != limit
     {
         ops.push(Op::ChargeLimit(limit));
     }
@@ -84,7 +89,7 @@ pub fn plan(s: &Snapshot, profile: &Profile, charge_limit: Option<u8>) -> Vec<Op
 
 #[cfg(test)]
 mod tests {
-    use msi_acpi::{FanStatus, Snapshot};
+    use msi_acpi::{FanStatus, Scenarios, Snapshot};
 
     use super::*;
 
@@ -98,16 +103,17 @@ mod tests {
         Snapshot {
             cpu: fan([38, 40, 45, 54, 60, 68]),
             gpu: fan([38, 40, 45, 54, 60, 68]),
-            shift_raw: 0xC1,
-            fan_mode_raw: 0x0D,
+            shift_raw: Some(0xC1),
+            fan_mode_raw: Some(0x0D),
             scenario: Some(Scenario::Balanced),
+            scenarios: Scenarios::ALL,
             advanced_fan: false,
-            cooler_boost: false,
-            battery_limit: None,
+            cooler_boost: Some(false),
+            charge_limit: Some(100),
             webcam: Some(true),
-            win_fn_swapped: false,
-            kbd_backlight: 1,
-            fn_lock: false,
+            win_fn_swapped: Some(false),
+            kbd_backlight: Some(1),
+            fn_lock: Some(false),
             usb_share: Some(true),
         }
     }
@@ -126,8 +132,8 @@ mod tests {
             fan: FanProfile::Custom { cpu: [30, 35, 40, 50, 60, 70], gpu: [30, 35, 40, 50, 60, 70] },
             cooler_boost: false,
         };
-        s.cooler_boost = true;
-        s.battery_limit = None;
+        s.cooler_boost = Some(true);
+        s.charge_limit = Some(100);
         assert_eq!(
             plan(&s, &wanted, Some(80)),
             vec![
@@ -157,7 +163,7 @@ mod tests {
     fn unknown_scenario_and_unset_limit_are_left_alone() {
         let mut s = snapshot();
         s.scenario = None;
-        s.battery_limit = Some(60);
+        s.charge_limit = Some(60);
         let wanted = Profile { scenario: None, ..Profile::capture(&snapshot()) };
         assert!(plan(&s, &wanted, None).is_empty());
     }
@@ -167,6 +173,16 @@ mod tests {
         let mut s = snapshot();
         s.advanced_fan = true;
         assert_eq!(plan(&s, &Profile::capture(&snapshot()), None), vec![Op::AutoFan]);
+    }
+
+    #[test]
+    fn features_the_model_lacks_are_never_planned() {
+        let mut s = snapshot();
+        s.scenarios = [Scenario::Balanced, Scenario::SuperBattery].into_iter().collect();
+        s.cooler_boost = None;
+        s.charge_limit = None;
+        let wanted = Profile { scenario: Some(Scenario::Silent), fan: FanProfile::Auto, cooler_boost: true };
+        assert!(plan(&s, &wanted, Some(80)).is_empty());
     }
 
     #[test]

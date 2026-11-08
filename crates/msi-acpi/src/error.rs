@@ -24,6 +24,9 @@ pub enum Error {
     UnsupportedInterface { major: u8, minor: u8 },
     #[error("invalid argument: {0}")]
     InvalidArgument(String),
+    /// The model's EC layout has no register for this feature; nothing was written.
+    #[error("{0} is not supported on this model")]
+    Unsupported(&'static str),
     /// The hardware worker thread has exited.
     #[error("hardware worker stopped")]
     WorkerStopped,

@@ -6,7 +6,7 @@ use gpui::{
     AppContext as _, Bounds, Context, Window, WindowBackgroundAppearance, WindowBounds, WindowKind,
     WindowOptions, point, px, size,
 };
-use msi_acpi::Scenario;
+use msi_acpi::{Scenario, Scenarios};
 
 use super::MsiApp;
 use crate::i18n::Lang;
@@ -121,35 +121,50 @@ impl MsiApp {
         });
     }
 
-    /// Quick actions: open, scenarios, Cooler Boost, quit.
+    /// Quick actions: open, scenarios, Cooler Boost, quit — the ones the model supports.
     fn tray_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        #[derive(Clone, Copy)]
+        enum Pick {
+            Open,
+            Scenario(Scenario),
+            Boost(bool),
+            Exit,
+        }
         let Some(tray) = &self.tray else { return };
         let tr = self.tr();
         let snap = self.snap.as_ref();
-        let action = |label: &str, checked: bool| MenuItem::Action { label: label.to_owned(), checked };
-        let mut items = vec![action(tr.tray_open, false), MenuItem::Separator];
-        for (i, sc) in Scenario::ALL.into_iter().enumerate() {
-            items.push(action(tr.scenarios[i], snap.and_then(|s| s.scenario) == Some(sc)));
+        // `picks[i]` is what item `i` does; separators do nothing.
+        let mut items = Vec::new();
+        let mut picks = Vec::new();
+        let mut push = |item: Option<(&str, bool, Pick)>| match item {
+            Some((label, checked, pick)) => {
+                items.push(MenuItem::Action { label: label.to_owned(), checked });
+                picks.push(Some(pick));
+            }
+            None => {
+                items.push(MenuItem::Separator);
+                picks.push(None);
+            }
+        };
+        push(Some((tr.tray_open, false, Pick::Open)));
+        push(None);
+        let scenarios = snap.map_or(Scenarios::default(), |s| s.scenarios);
+        for (i, sc) in Scenario::ALL.into_iter().enumerate().filter(|&(_, sc)| scenarios.contains(sc)) {
+            push(Some((tr.scenarios[i], snap.and_then(|s| s.scenario) == Some(sc), Pick::Scenario(sc))));
         }
-        items.push(MenuItem::Separator);
-        items.push(action("Cooler Boost", snap.is_some_and(|s| s.cooler_boost)));
-        items.push(MenuItem::Separator);
-        items.push(action(tr.tray_exit, false));
+        if let Some(on) = snap.and_then(|s| s.cooler_boost) {
+            push(None);
+            push(Some(("Cooler Boost", on, Pick::Boost(!on))));
+        }
+        push(None);
+        push(Some((tr.tray_exit, false, Pick::Exit)));
 
-        const SCENARIOS: usize = 2;
-        let boost = SCENARIOS + Scenario::ALL.len() + 1;
-        let exit = boost + 2;
-        match tray.show_menu(&items) {
-            Some(0) => platform::show_window(window),
-            Some(i) if (SCENARIOS..SCENARIOS + Scenario::ALL.len()).contains(&i) => {
-                self.set_scenario(Scenario::ALL[i - SCENARIOS], false, cx);
-            }
-            Some(i) if i == boost => {
-                let on = !self.snap.as_ref().is_some_and(|s| s.cooler_boost);
-                self.set_cooler_boost(on, false, cx);
-            }
-            Some(i) if i == exit => self.quit(cx),
-            _ => {}
+        match tray.show_menu(&items).and_then(|i| picks.get(i).copied().flatten()) {
+            Some(Pick::Open) => platform::show_window(window),
+            Some(Pick::Scenario(sc)) => self.set_scenario(sc, false, cx),
+            Some(Pick::Boost(on)) => self.set_cooler_boost(on, false, cx),
+            Some(Pick::Exit) => self.quit(cx),
+            None => {}
         }
     }
 

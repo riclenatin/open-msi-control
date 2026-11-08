@@ -59,7 +59,7 @@ impl Render for Flyout {
         let a = app.read(cx);
         let tr = a.tr();
         let Some(s) = a.snap.clone() else { return root };
-        let battery = s.battery_limit.unwrap_or(100);
+        let battery = s.charge_limit;
         self.transitions.begin_frame(false);
 
         let mut eased = |key, v: Option<u8>| {
@@ -67,7 +67,10 @@ impl Render for Flyout {
         };
         let (cpu, gpu) = (eased(0, s.cpu.temp_c), eased(1, s.gpu.temp_c));
 
-        let current = s.scenario.and_then(|c| Scenario::ALL.iter().position(|&x| x == c));
+        // Only what the model supports; `i` indexes `Scenario::ALL`.
+        let shown: Vec<(usize, Scenario)> =
+            Scenario::ALL.into_iter().enumerate().filter(|&(_, sc)| s.scenarios.contains(sc)).collect();
+        let current = s.scenario.and_then(|c| shown.iter().position(|&(_, x)| x == c));
         let scenario_at = current.map_or(0.0, |i| {
             self.transitions.animate(("scenario", 0), i as f32, Spec::movement(motion::MOVE))
         });
@@ -76,26 +79,27 @@ impl Render for Flyout {
             f32::from(u8::from(s.advanced_fan)),
             Spec::movement(motion::MOVE),
         );
-        let preset = PRESETS.iter().position(|&p| p == battery);
+        let preset = PRESETS.iter().position(|&p| Some(p) == battery);
         let preset_at = preset.map_or(0.0, |i| {
             self.transitions.animate(("battery", 0), i as f32, Spec::movement(motion::MOVE))
         });
-        let boost_at = self.transitions.animate(
-            ("boost", 0),
-            f32::from(u8::from(s.cooler_boost)),
-            Spec::movement(motion::TOGGLE),
-        );
+        let boost_at = s.cooler_boost.map(|on| {
+            self.transitions.animate(("boost", 0), f32::from(u8::from(on)), Spec::movement(motion::TOGGLE))
+        });
 
-        let scenarios = segmented(
-            "fly-scenario",
-            &tr.scenarios.map(SharedString::from),
-            current,
-            scenario_at,
-            Width::Fill,
-            false,
-            window,
-            self.call(|a, (i, kb): (usize, bool), cx| a.set_scenario(Scenario::ALL[i], kb, cx)),
-        );
+        let labels: Vec<SharedString> = shown.iter().map(|&(i, _)| tr.scenarios[i].into()).collect();
+        let scenarios = (!shown.is_empty()).then(|| {
+            segmented(
+                "fly-scenario",
+                &labels,
+                current,
+                scenario_at,
+                Width::Fill,
+                false,
+                window,
+                self.call(move |a, (i, kb): (usize, bool), cx| a.set_scenario(shown[i].1, kb, cx)),
+            )
+        });
         let fan_mode = segmented(
             "fly-fan",
             &[SharedString::from(tr.fan_auto), SharedString::from(tr.fan_custom)],
@@ -108,28 +112,32 @@ impl Render for Flyout {
                 |a, (i, _): (usize, bool), cx| if i == 0 { a.auto_fan(cx) } else { a.apply_curves(cx) },
             ),
         );
-        let presets = segmented(
-            "fly-battery",
-            &PRESETS.map(|p| SharedString::from(format!("{p} %"))),
-            preset,
-            preset_at,
-            Width::Content,
-            false,
-            window,
-            self.call(|a, (i, _): (usize, bool), cx| a.set_battery(PRESETS[i], false, cx)),
-        );
-        let boost = SwitchRow {
-            id: "fly-boost".into(),
-            icon: Icon::Wind,
-            label: "Cooler Boost",
-            description: None,
-            explain: None,
-            on: s.cooler_boost,
-            thumb_at: boost_at,
-            ring: false,
-            on_toggle: self.call(|a, (on, kb): (bool, bool), cx| a.set_cooler_boost(on, kb, cx)),
-        }
-        .render();
+        let presets = battery.is_some().then(|| {
+            segmented(
+                "fly-battery",
+                &PRESETS.map(|p| SharedString::from(format!("{p} %"))),
+                preset,
+                preset_at,
+                Width::Content,
+                false,
+                window,
+                self.call(|a, (i, _): (usize, bool), cx| a.set_battery(PRESETS[i], false, cx)),
+            )
+        });
+        let boost = s.cooler_boost.zip(boost_at).map(|(on, thumb_at)| {
+            SwitchRow {
+                id: "fly-boost".into(),
+                icon: Icon::Wind,
+                label: "Cooler Boost",
+                description: None,
+                explain: None,
+                on,
+                thumb_at,
+                ring: false,
+                on_toggle: self.call(|a, (on, kb): (bool, bool), cx| a.set_cooler_boost(on, kb, cx)),
+            }
+            .render()
+        });
 
         if self.transitions.is_animating() {
             window.request_animation_frame();
@@ -173,10 +181,14 @@ impl Render for Flyout {
                             s.gpu.temp_c,
                         ))),
                 )
-                .child(scenarios)
+                .children(scenarios)
                 .child(div().flex().items_center().justify_between().child(label(tr.fans)).child(fan_mode))
-                .child(inset().p(px(2.)).child(boost))
-                .child(div().flex().items_center().justify_between().child(label(tr.battery)).child(presets))
+                .children(boost.map(|b| inset().p(px(2.)).child(b)))
+                .children(
+                    presets.map(|p| {
+                        div().flex().items_center().justify_between().child(label(tr.battery)).child(p)
+                    }),
+                )
                 .child(div().flex_1())
                 .child(
                     div()

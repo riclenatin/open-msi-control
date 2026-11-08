@@ -5,6 +5,8 @@ How MSI laptops expose fan, performance and battery control on Windows, as used 
 A12VF (board MS-15K1, EC firmware `15K1IMS1.113`, MSI WMI interface 2.8): its own call log
 (`WmiAcpi2.log`), its public .NET metadata, live probing with `msi-probe`, and cross-checking
 against the Linux [`msi-ec`](https://github.com/BeardOverflow/msi-ec) driver (`CONF_G2_1`).
+Register layouts of other models come from msi-ec's table (see [Model layouts](#model-layouts))
+and are not verified on hardware by this project.
 
 No MSI code is included in this repository.
 
@@ -40,7 +42,8 @@ are dumped by `msi-probe` for new-model reports.
 
 ## EC RAM map (WMI 2.x, `CONF_G2_1` family)
 
-All writes are read-modify-write of one byte; bits not listed are preserved.
+The verified layout, built into the library and used for firmware msi-ec does not list. All
+writes are read-modify-write of one byte; bits not listed are preserved.
 
 | Address | Bits | Meaning |
 |---|---|---|
@@ -82,7 +85,9 @@ MSI Center keeps the selected scenario in the registry; on non-TDP models it onl
 | Silent | `0xC1` | 1 |
 | Super Battery | `0xC2` | 0 |
 
-The scenario is therefore recovered from these two registers.
+The scenario is therefore recovered from these two registers. In msi-ec terms these are the
+shift modes `turbo`, `comfort`, `comfort`, `eco` and the fan modes `auto` (`0x0D`) and `silent`
+(`0x1D`); `advanced` (`0x8D`) is bit7, the user curve.
 
 ### Fn Lock and touchpad
 
@@ -92,6 +97,32 @@ bits of `0xD9` are written by MSI's service, so this project never writes the by
 The touchpad has no EC register. MSI Center toggles it by sending the Precision Touchpad hotkey
 Ctrl+Win+F24; the resulting state is
 `HKCU\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad\Status\Enabled` (DWORD).
+
+## Model layouts
+
+The EC firmware name from `Get_EC` (e.g. `15K1IMS1.113`) selects the register layout. msi-ec
+groups firmware into configs (`CONF_*`) that share one layout; `tools/gen-models.py` turns its
+table into `crates/msi-acpi/src/models/msi_ec.rs` (msi-ec is GPL-2.0, attribution is kept in
+that file). `crates/msi-acpi/src/ec.rs` maps each feature to a register of the matched config:
+
+| Feature | msi-ec field | How it is used |
+|---|---|---|
+| Scenarios | `shift_mode` | whole-byte write of the `turbo` / `comfort` / `eco` value; a scenario whose mode the config lacks is unsupported (Silent also needs a `silent` fan mode) |
+| Silent / user curve | `fan_mode` | `silent` and `advanced` relative to `auto`: when they differ from it by one bit (every current config), that bit is set or cleared and the rest of the byte is kept; otherwise msi-ec's whole-byte values are written |
+| Cooler Boost | `cooler_boost` | its bit |
+| Charge limit | `charge_control_address` | `0x80 \| percent` |
+| Webcam | `webcam`, `webcam.block_address` | switch bit; hidden while the block bit (`0x2F` bit1, "switch supported" on MS-15K1) is clear |
+| Win/Fn swap | `fn_win_swap` | swapped while bit XOR `invert` is 1 (msi-ec's "Win key on the left"; MS-15K1: bit4 cleared) |
+| Keyboard backlight | `kbd_bl.bl_state_address` | `(v & state_base) \| level`, only for configs with levels 0..=3 |
+
+USB power share (`0xBF`) and Fn Lock (`0xD9`) are not in msi-ec; they are used only with
+`CONF_G2_1` and the built-in layout. Super Battery's msi-ec register (`super_battery`) is not
+written: MSI Center on MS-15K1 selects Super Battery through the `eco` shift mode alone.
+
+Firmware msi-ec does not list falls back to the built-in layout above, and the app shows
+*Model not recognised*. `msi-probe` prints the matched config and the resolved layout. Fan
+curves, temperatures and tachometers use the WMI methods above, which are the same on every
+WMI 2.x model.
 
 ## Known side effects
 

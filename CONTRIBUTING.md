@@ -30,10 +30,12 @@ elevated terminal; it only reads). Mention which features you tried and what hap
   cargo test --workspace
   ```
 
-- **EC registers:** add them to `crates/msi-acpi/src/ec.rs`, document them in
-  `docs/PROTOCOL.md`, write through read-modify-write helpers, and cover the encoding with a
-  test in `crates/msi-acpi/tests/laptop.rs`. Say in the PR on which model and firmware you
-  verified the write and how you read it back.
+- **EC registers:** map them in `crates/msi-acpi/src/ec.rs` (the `Layout` of the built-in model or
+  the msi-ec config they come from), document them in `docs/PROTOCOL.md`, write through
+  read-modify-write helpers, and cover the encoding with a test in
+  `crates/msi-acpi/tests/laptop.rs`. Say in the PR on which model and firmware you verified the
+  write and how you read it back. Model tables come from msi-ec: regenerate
+  `crates/msi-acpi/src/models/msi_ec.rs` with `tools/gen-models.py` instead of editing it.
 - **UI:** use theme tokens and existing components; check contrast tests still pass; make new
   controls keyboard-reachable. See the UI conventions in [`AGENTS.md`](AGENTS.md).
 - Update `CHANGELOG.md` for anything a user would notice.

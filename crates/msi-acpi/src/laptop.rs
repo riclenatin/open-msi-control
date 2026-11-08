@@ -1,9 +1,12 @@
 //! Feature layer: mirrors what MSI Center does on WMI 2.x firmware.
 //!
 //! Every write is a read-modify-write of a single EC byte, so bits this crate does not own are
-//! preserved exactly as MSI Center preserves them.
+//! preserved exactly as MSI Center preserves them. Where each feature lives comes from the
+//! laptop's [`Layout`]; a feature the layout lacks is reported as `None` and never written.
 
-use crate::ec;
+use std::fmt;
+
+use crate::ec::{self, Bit, Flag, Gated, Layout};
 use crate::model::{CURVE_POINTS, Fan, FanCurve, FanStatus, Info, Scenario, Snapshot};
 use crate::transport::{Method, Transport};
 use crate::{Error, Result};
@@ -17,6 +20,7 @@ const EC_NAME_LEN: usize = 12;
 pub struct Laptop<T> {
     transport: T,
     info: Info,
+    layout: Layout,
 }
 
 #[cfg(windows)]
@@ -28,7 +32,8 @@ impl Laptop<crate::WmiTransport> {
 }
 
 impl<T: Transport> Laptop<T> {
-    /// Validates the interface version and reads firmware identification.
+    /// Validates the interface version, reads firmware identification and picks the EC layout
+    /// for that firmware.
     pub fn new(transport: T) -> Result<Self> {
         let wmi = transport.call(Method::Get_WMI, 0, &[])?;
         let (major, minor) = (wmi[1], wmi[2]);
@@ -39,16 +44,23 @@ impl<T: Transport> Laptop<T> {
         let ec = transport.call(Method::Get_EC, 0, &[])?;
         let text: String = ec[2..].iter().take_while(|&&b| b != 0).map(|&b| char::from(b)).collect();
         let split = text.len().min(EC_NAME_LEN);
+        let (ec_config, layout) = Layout::resolve(&text[..split]);
         let info = Info {
             wmi_version: (major, minor),
             ec_firmware: text[..split].to_owned(),
             ec_build: text[split..].to_owned(),
+            ec_config,
         };
-        Ok(Self { transport, info })
+        Ok(Self { transport, info, layout })
     }
 
     pub fn info(&self) -> &Info {
         &self.info
+    }
+
+    /// The EC registers in use, one feature per line (for diagnostics).
+    pub fn layout(&self) -> impl fmt::Display + '_ {
+        &self.layout
     }
 
     /// Calls a `Get_*` method and returns its 31-byte payload.
@@ -92,6 +104,30 @@ impl<T: Transport> Laptop<T> {
         self.update_ec(addr, |v| if on { v | mask } else { v & !mask })
     }
 
+    fn read_bit(&self, bit: Option<Bit>) -> Result<Option<bool>> {
+        bit.map(|b| self.read_ec(b.address).map(|v| b.is_set(v))).transpose()
+    }
+
+    /// `None` when the layout has no such switch or its capability bit is clear.
+    fn read_gated(&self, gated: Option<Gated>) -> Result<Option<bool>> {
+        let Some(Gated { switch, supported }) = gated else { return Ok(None) };
+        let cap = supported.map(|cap| self.read_ec(cap.address).map(|v| (cap, v))).transpose()?;
+        let value = match cap {
+            Some((cap, v)) if !cap.is_set(v) => return Ok(None),
+            Some((cap, v)) if cap.address == switch.address => v,
+            _ => self.read_ec(switch.address)?,
+        };
+        Ok(Some(switch.is_set(value)))
+    }
+
+    /// Fan-mode register and its advanced (user curve) flag.
+    fn advanced_fan(&self) -> Result<(u8, Flag)> {
+        self.layout
+            .fan_mode
+            .and_then(|m| Some((m.address, m.advanced?)))
+            .ok_or(Error::Unsupported("custom fan curves"))
+    }
+
     fn fan_curve(&self, fan: Fan) -> Result<(u8, FanCurve)> {
         let speeds = self.get(Method::Get_Fan, fan as u8)?;
         // Get_Temperature(1|2) payload = EC [0x69, 0x6F, 0x70, 0x6A..=0x6E] (CPU; GPU +0x18).
@@ -117,13 +153,11 @@ impl<T: Transport> Laptop<T> {
         let (cpu_duty, cpu_curve) = self.fan_curve(Fan::Cpu)?;
         let (gpu_duty, gpu_curve) = self.fan_curve(Fan::Gpu)?;
 
-        let shift_raw = self.read_ec(ec::SHIFT)?;
-        let fan_mode_raw = self.read_ec(ec::FAN_MODE)?;
-        let battery = self.read_ec(ec::BATTERY)?;
-        let caps = self.read_ec(ec::DEVICE_CAPS)?;
-        let webcam = self.read_ec(ec::WEBCAM)?;
-        let usb = self.read_ec(ec::USB_SHARE)?;
-        let battery_pct = battery & ec::BATTERY_PERCENT_MASK;
+        let layout = &self.layout;
+        let shift_raw = layout.shift.map(|s| self.read_ec(s.address)).transpose()?;
+        let fan_mode_raw = layout.fan_mode.map(|m| self.read_ec(m.address)).transpose()?;
+        let advanced = layout.fan_mode.and_then(|m| m.advanced);
+        let read = |addr: Option<u8>| addr.map(|a| self.read_ec(a)).transpose();
 
         Ok(Snapshot {
             cpu: FanStatus {
@@ -140,36 +174,48 @@ impl<T: Transport> Laptop<T> {
             },
             shift_raw,
             fan_mode_raw,
-            scenario: Scenario::detect(shift_raw, fan_mode_raw),
-            advanced_fan: fan_mode_raw & ec::FAN_ADVANCED != 0,
-            cooler_boost: self.read_ec(ec::COOLER_BOOST)? & ec::COOLER_BOOST_ON != 0,
-            // MSI writes 0x80 | 100 ("Best for Mobility"); 0x80 alone also means no limit.
-            battery_limit: (battery & ec::BATTERY_ENABLED != 0 && (1..100).contains(&battery_pct))
-                .then_some(battery_pct),
-            webcam: (caps & ec::CAP_WEBCAM != 0).then_some(webcam & ec::WEBCAM_ON != 0),
-            win_fn_swapped: self.read_ec(ec::WIN_FN)? & ec::WIN_FN_NORMAL == 0,
-            fn_lock: self.read_ec(ec::STATUS)? & ec::STATUS_FN_UNLOCKED == 0,
-            kbd_backlight: self.read_ec(ec::KBD_BACKLIGHT)? & ec::KBD_LEVEL_MASK,
-            usb_share: (usb & ec::USB_SHARE_SUPPORTED != 0).then_some(usb & ec::USB_SHARE_ON != 0),
+            scenario: shift_raw.and_then(|shift| layout.scenario(shift, fan_mode_raw)),
+            scenarios: layout.scenarios(),
+            advanced_fan: advanced.zip(fan_mode_raw).is_some_and(|(flag, v)| flag.is_on(v)),
+            cooler_boost: self.read_bit(layout.cooler_boost)?,
+            charge_limit: read(layout.battery)?.map(ec::charge_limit),
+            webcam: self.read_gated(layout.webcam)?,
+            win_fn_swapped: layout
+                .win_fn
+                .map(|w| self.read_ec(w.bit.address).map(|v| w.swapped(v)))
+                .transpose()?,
+            fn_lock: self.read_bit(layout.fn_unlocked)?.map(|unlocked| !unlocked),
+            kbd_backlight: read(layout.kbd_backlight.map(|k| k.address))?.map(|v| v & ec::KBD_LEVEL_MASK),
+            usb_share: self.read_gated(layout.usb_share)?,
         })
     }
 
+    /// Writes the scenario's shift mode and sets or clears the silent fan flag.
     pub fn set_scenario(&self, scenario: Scenario) -> Result<()> {
-        self.write_ec(ec::SHIFT, scenario.shift())?;
-        self.set_bits(ec::FAN_MODE, ec::FAN_SILENT, scenario == Scenario::Silent)
+        let (address, value) = self.layout.shift_for(scenario).ok_or(Error::Unsupported("this scenario"))?;
+        self.write_ec(address, value)?;
+        if let Some(m) = self.layout.fan_mode
+            && let Some(silent) = m.silent
+        {
+            self.update_ec(m.address, |v| silent.apply(v, scenario == Scenario::Silent))?;
+        }
+        Ok(())
     }
 
     pub fn set_cooler_boost(&self, on: bool) -> Result<()> {
-        self.set_bits(ec::COOLER_BOOST, ec::COOLER_BOOST_ON, on)
+        let bit = self.layout.cooler_boost.ok_or(Error::Unsupported("Cooler Boost"))?;
+        self.set_bits(bit.address, bit.mask, on)
     }
 
-    /// Returns to the firmware's built-in curve; the silent bit is kept.
+    /// Returns to the firmware's built-in curve; the silent flag is kept.
     pub fn set_auto_fan(&self) -> Result<()> {
-        self.set_bits(ec::FAN_MODE, ec::FAN_ADVANCED, false)
+        let (address, advanced) = self.advanced_fan()?;
+        self.update_ec(address, |v| advanced.apply(v, false))
     }
 
     /// Writes user curves for both fans (normalised first) and switches the EC to them.
     pub fn set_fan_curves(&self, cpu: [u8; CURVE_POINTS], gpu: [u8; CURVE_POINTS]) -> Result<()> {
+        let (address, advanced) = self.advanced_fan()?;
         for (fan, speeds) in [(Fan::Cpu, cpu), (Fan::Gpu, gpu)] {
             // Bytes 0 (live duty) and 7 (top point) are echoed back unchanged, as MSI does.
             let current = self.get(Method::Get_Fan, fan as u8)?;
@@ -179,34 +225,38 @@ impl<T: Transport> Laptop<T> {
             table[1..=CURVE_POINTS].copy_from_slice(&FanCurve::normalized(speeds, ceiling));
             self.set(Method::Set_Fan, fan as u8, &table)?;
         }
-        self.set_bits(ec::FAN_MODE, ec::FAN_ADVANCED, true)
+        self.update_ec(address, |v| advanced.apply(v, true))
     }
 
-    /// Stop charging at `percent` (`10..=100`); `None` charges to 100 %.
-    pub fn set_battery_limit(&self, percent: Option<u8>) -> Result<()> {
-        let percent = percent.unwrap_or(100);
+    /// Stop charging at `percent` (`10..=100`); 100 charges fully.
+    pub fn set_charge_limit(&self, percent: u8) -> Result<()> {
+        let address = self.layout.battery.ok_or(Error::Unsupported("battery charge limit"))?;
         if !(10..=100).contains(&percent) {
             return Err(Error::InvalidArgument(format!("charge limit {percent}% is outside 10..=100")));
         }
-        self.write_ec(ec::BATTERY, ec::BATTERY_ENABLED | percent)
+        self.write_ec(address, ec::BATTERY_ENABLED | percent)
     }
 
     pub fn set_webcam(&self, on: bool) -> Result<()> {
-        self.set_bits(ec::WEBCAM, ec::WEBCAM_ON, on)
+        let webcam = self.layout.webcam.ok_or(Error::Unsupported("webcam switch"))?;
+        self.set_bits(webcam.switch.address, webcam.switch.mask, on)
     }
 
     pub fn set_win_fn_swap(&self, swapped: bool) -> Result<()> {
-        self.set_bits(ec::WIN_FN, ec::WIN_FN_NORMAL, !swapped)
+        let win_fn = self.layout.win_fn.ok_or(Error::Unsupported("Win/Fn swap"))?;
+        self.set_bits(win_fn.bit.address, win_fn.bit.mask, win_fn.bit_for(swapped))
     }
 
     pub fn set_kbd_backlight(&self, level: u8) -> Result<()> {
+        let kbd = self.layout.kbd_backlight.ok_or(Error::Unsupported("keyboard backlight"))?;
         if level > ec::KBD_MAX_LEVEL {
             return Err(Error::InvalidArgument(format!("backlight level {level} is above 3")));
         }
-        self.update_ec(ec::KBD_BACKLIGHT, |v| (v & ec::KBD_KEEP) | level)
+        self.update_ec(kbd.address, |v| (v & kbd.keep) | level)
     }
 
     pub fn set_usb_share(&self, on: bool) -> Result<()> {
-        self.set_bits(ec::USB_SHARE, ec::USB_SHARE_ON, on)
+        let usb = self.layout.usb_share.ok_or(Error::Unsupported("USB power share"))?;
+        self.set_bits(usb.switch.address, usb.switch.mask, on)
     }
 }

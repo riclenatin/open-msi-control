@@ -1,4 +1,7 @@
 //! In-memory EC that answers `MSI_ACPI` calls the way MS-15K1 firmware does.
+//!
+//! Other models are emulated by giving it another firmware string: the RAM stays the MS-15K1
+//! dump, so tests set the registers they read.
 
 use std::cell::{Cell, RefCell};
 
@@ -12,6 +15,8 @@ const GPU_OFFSET: usize = 0x18;
 const CPU_TEMP: usize = 0x68;
 const CPU_DUTY: usize = 0x71;
 const TACH: usize = 0xC8;
+/// Where `Get_EC` reads the firmware string from.
+const FIRMWARE: usize = 0xA0;
 
 pub struct FakeEc {
     pub ram: RefCell<[u8; 256]>,
@@ -31,6 +36,14 @@ impl FakeEc {
             }
         }
         Self { ram: RefCell::new(ram), wmi_version: (2, 8), reject: Cell::new(None) }
+    }
+
+    /// The MS-15K1 dump reporting EC firmware `firmware` (12 characters, like `15K1IMS1.113`).
+    pub fn with_firmware(firmware: &str) -> Self {
+        assert_eq!(firmware.len(), 12, "{firmware:?} is not a 12-character EC firmware name");
+        let ec = Self::cyborg15();
+        ec.ram.borrow_mut()[FIRMWARE..FIRMWARE + 12].copy_from_slice(firmware.as_bytes());
+        ec
     }
 
     pub fn get(&self, addr: u8) -> u8 {
@@ -69,7 +82,7 @@ impl Transport for FakeEc {
             (Method::Get_WMI, _) => vec![self.wmi_version.0, self.wmi_version.1],
             (Method::Get_EC, _) => {
                 let mut v = vec![0x81];
-                v.extend_from_slice(&ram[0xA0..0xBC]);
+                v.extend_from_slice(&ram[FIRMWARE..0xBC]);
                 v
             }
             (Method::Get_Data, addr) => vec![ram[usize::from(addr)]],

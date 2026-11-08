@@ -23,6 +23,10 @@ impl MsiApp {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let t = theme();
+        // Hidden on models without a charge limit.
+        if !self.snap.as_ref().is_some_and(|s| s.charge_limit.is_some()) {
+            return div();
+        }
         let value = self.battery_value();
         let ring = self.keyboard_nav;
         let dragging = self.drag == Some(Drag::Battery);

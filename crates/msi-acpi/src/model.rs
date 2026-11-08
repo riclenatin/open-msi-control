@@ -1,5 +1,3 @@
-use crate::ec;
-
 /// Editable points per fan curve. MSI Center edits EC speeds 0..=5 and leaves the topmost
 /// (seventh) point to the firmware; so does this crate.
 pub const CURVE_POINTS: usize = 6;
@@ -13,7 +11,7 @@ pub enum Fan {
 /// The user scenarios MSI Center offers on models without TDP control (e.g. MS-15K1).
 ///
 /// MSI Center keeps the scenario as software state; it is recovered here from the EC registers
-/// the scenario writes (shift mode and the silent fan bit).
+/// the scenario writes (shift mode and the silent fan flag).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(rename_all = "snake_case"))]
 pub enum Scenario {
@@ -26,22 +24,31 @@ pub enum Scenario {
 impl Scenario {
     pub const ALL: [Self; 4] = [Self::ExtremePerformance, Self::Balanced, Self::Silent, Self::SuperBattery];
 
-    pub(crate) const fn shift(self) -> u8 {
-        match self {
-            Self::ExtremePerformance => 0xC4,
-            Self::Balanced | Self::Silent => 0xC1,
-            Self::SuperBattery => 0xC2,
-        }
+    const fn bit(self) -> u8 {
+        1 << self as u8
+    }
+}
+
+/// A set of scenarios, e.g. those a model's EC layout can express.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Scenarios(u8);
+
+impl Scenarios {
+    pub const ALL: Self = Self(0b1111);
+
+    pub fn contains(self, scenario: Scenario) -> bool {
+        self.0 & scenario.bit() != 0
     }
 
-    pub(crate) fn detect(shift: u8, fan_mode: u8) -> Option<Self> {
-        match (shift, fan_mode & ec::FAN_SILENT != 0) {
-            (0xC4, _) => Some(Self::ExtremePerformance),
-            (0xC1, true) => Some(Self::Silent),
-            (0xC1, false) => Some(Self::Balanced),
-            (0xC2, _) => Some(Self::SuperBattery),
-            _ => None,
-        }
+    /// Members in [`Scenario::ALL`] order.
+    pub fn iter(self) -> impl Iterator<Item = Scenario> {
+        Scenario::ALL.into_iter().filter(move |&s| self.contains(s))
+    }
+}
+
+impl FromIterator<Scenario> for Scenarios {
+    fn from_iter<I: IntoIterator<Item = Scenario>>(iter: I) -> Self {
+        Self(iter.into_iter().fold(0, |set, s| set | s.bit()))
     }
 }
 
@@ -92,26 +99,30 @@ pub struct FanStatus {
     pub curve: FanCurve,
 }
 
-/// Everything the UI shows, read in one pass.
+/// Everything the UI shows, read in one pass. Features the model's EC layout lacks are `None`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Snapshot {
     pub cpu: FanStatus,
     pub gpu: FanStatus,
-    pub shift_raw: u8,
-    pub fan_mode_raw: u8,
+    pub shift_raw: Option<u8>,
+    pub fan_mode_raw: Option<u8>,
     /// `None` when the registers hold a combination MSI Center never writes.
     pub scenario: Option<Scenario>,
+    /// Scenarios this model can be switched to.
+    pub scenarios: Scenarios,
+    /// The user fan curve is active (always `false` without an advanced fan mode).
     pub advanced_fan: bool,
-    pub cooler_boost: bool,
-    /// Stop-charging threshold in %, `None` = charge to 100 %.
-    pub battery_limit: Option<u8>,
-    /// `None` when the model has no webcam switch.
+    pub cooler_boost: Option<bool>,
+    /// Stop-charging threshold in %, 100 = charges fully.
+    pub charge_limit: Option<u8>,
+    /// Also `None` while the firmware reports no webcam switch.
     pub webcam: Option<bool>,
-    pub win_fn_swapped: bool,
+    pub win_fn_swapped: Option<bool>,
     /// Fn Lock engaged (read-only; toggled on the keyboard with Fn+Esc).
-    pub fn_lock: bool,
-    pub kbd_backlight: u8,
-    /// `None` when the model has no USB power share.
+    pub fn_lock: Option<bool>,
+    /// Level `0..=3`.
+    pub kbd_backlight: Option<u8>,
+    /// Also `None` while the firmware reports no USB power share.
     pub usb_share: Option<bool>,
 }
 
@@ -122,4 +133,7 @@ pub struct Info {
     pub ec_firmware: String,
     /// Build stamp following the firmware name, e.g. `0819202415:13:22`.
     pub ec_build: String,
+    /// msi-ec config whose register layout is in use, e.g. `CONF_G2_1`. `None` when msi-ec does
+    /// not list the firmware; the built-in MS-15K1 layout (same registers as `CONF_G2_1`) is used.
+    pub ec_config: Option<&'static str>,
 }

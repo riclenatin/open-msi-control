@@ -34,6 +34,8 @@ pub struct Strings {
     pub no_access_title: &'static str,
     pub no_access_hint: &'static str,
     pub model_fallback: &'static str,
+    pub model_unknown: &'static str,
+    pub model_unknown_info: &'static str,
     pub footer: &'static str,
     pub read_failed: &'static str,
 
@@ -127,6 +129,10 @@ pub static RU: Strings = Strings {
     no_access_title: "Нет доступа к прошивке ноутбука",
     no_access_hint: "Нужен ноутбук MSI с интерфейсом WMI 2.x и запуск от имени администратора.",
     model_fallback: "Ноутбук MSI",
+    model_unknown: "Модель не распознана",
+    model_unknown_info: "Этой прошивки EC нет в таблице моделей msi-ec, поэтому используются \
+                         регистры Cyborg 15 A12VF (msi-ec CONF_G2_1). Часть настроек может не \
+                         работать — запустите msi-probe и создайте issue о новой модели.",
     footer: "MSI Center Service может вернуть свой сценарий после перезагрузки и сна — включите \
              «Восстанавливать настройки».",
     read_failed: "Не удалось прочитать датчики",
@@ -251,6 +257,10 @@ pub static EN: Strings = Strings {
     no_access_title: "Cannot reach the laptop firmware",
     no_access_hint: "Requires an MSI laptop with WMI interface 2.x, running as Administrator.",
     model_fallback: "MSI laptop",
+    model_unknown: "Model not recognised",
+    model_unknown_info: "This EC firmware is not in the msi-ec model table, so the Cyborg 15 A12VF \
+                         registers are used (msi-ec CONF_G2_1). Some settings may not work — run \
+                         msi-probe and open a new-model issue.",
     footer: "MSI Center Service may restore its own scenario after reboot or sleep — turn on \
              Restore settings.",
     read_failed: "Failed to read sensors",

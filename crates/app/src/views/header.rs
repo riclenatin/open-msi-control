@@ -10,7 +10,7 @@ use crate::assets::Icon;
 use crate::charts::tick_gauge;
 use crate::motion::{self, Spec};
 use crate::theme::{FONT_MONO, theme};
-use crate::ui::{Tone, icon, mono, pill};
+use crate::ui::{Tone, icon, info, mono, pill};
 
 pub const HEIGHT: f32 = 128.;
 const GAUGE_W: f32 = 70.;
@@ -69,8 +69,17 @@ impl MsiApp {
         let tr = self.tr();
         let scrim = Rgba { a: 0.0, ..t.background };
 
-        // Status only matters while it is not "connected and reading".
+        // Status only matters while it is not "connected and reading" on a recognised model.
+        let unknown_model = self.info.as_ref().is_some_and(|i| i.ec_config.is_none());
         let status = match &self.conn {
+            Connection::Ready(_) if self.snap.is_some() && unknown_model => Some(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(2.))
+                    .child(pill(Tone::Warning, tr.model_unknown))
+                    .child(info("model-unknown", tr.model_unknown_info)),
+            ),
             Connection::Ready(_) if self.snap.is_some() => None,
             Connection::Failed(_) => Some(pill(Tone::Danger, tr.no_access)),
             _ => Some(pill(Tone::Neutral, tr.connecting)),

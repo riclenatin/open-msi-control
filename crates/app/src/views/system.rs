@@ -19,20 +19,22 @@ impl MsiApp {
         let Some(s) = self.snap.clone() else { return div() };
         let ring = self.keyboard_nav;
 
-        let level = usize::from(s.kbd_backlight);
-        let kbd_at = self.transitions.animate(("kbd", 0), level as f32, Spec::movement(motion::MOVE));
-        let kbd = segmented(
-            "kbd-backlight",
-            &[tr.backlight_off, "1", "2", "3"].map(SharedString::from),
-            Some(level),
-            kbd_at,
-            Width::Content,
-            ring,
-            window,
-            MsiApp::handler(cx, |this, (i, kb): (usize, bool), _, cx| {
-                this.set_kbd_backlight(i as u8, kb, cx)
-            }),
-        );
+        let kbd = s.kbd_backlight.map(|level| {
+            let kbd_at = self.transitions.animate(("kbd", 0), f32::from(level), Spec::movement(motion::MOVE));
+            let picker = segmented(
+                "kbd-backlight",
+                &[tr.backlight_off, "1", "2", "3"].map(SharedString::from),
+                Some(usize::from(level)),
+                kbd_at,
+                Width::Content,
+                ring,
+                window,
+                MsiApp::handler(cx, |this, (i, kb): (usize, bool), _, cx| {
+                    this.set_kbd_backlight(i as u8, kb, cx)
+                }),
+            );
+            control_row(Icon::Keyboard, level > 0, tr.backlight, Some(tr.backlight_info), picker)
+        });
 
         let mut row = |key: &'static str, icon, label, explain, on: bool, set: Setter| {
             let thumb_at =
@@ -57,21 +59,29 @@ impl MsiApp {
         });
         let webcam =
             s.webcam.map(|on| row("webcam", Icon::Webcam, tr.webcam, tr.webcam_info, on, MsiApp::set_webcam));
-        let win_fn =
-            row("win-fn", Icon::Swap, tr.win_fn, tr.win_fn_info, s.win_fn_swapped, MsiApp::set_win_fn);
+        let win_fn = s
+            .win_fn_swapped
+            .map(|on| row("win-fn", Icon::Swap, tr.win_fn, tr.win_fn_info, on, MsiApp::set_win_fn));
         let usb = s.usb_share.map(|on| {
             row("usb-share", Icon::Usb, tr.usb_share, tr.usb_share_info, on, MsiApp::set_usb_share)
         });
+        let switches: Vec<_> = [touchpad, webcam, win_fn, usb].into_iter().flatten().collect();
 
         // Fn Lock is owned by the EC (Fn+Esc); show its state only.
-        let fn_lock = mono(if s.fn_lock { tr.on } else { tr.off })
-            .px(px(10.))
-            .text_size(px(12.))
-            .text_color(if s.fn_lock { t.accent } else { t.text_muted });
+        let fn_lock = s.fn_lock.map(|on| {
+            let state = mono(if on { tr.on } else { tr.off })
+                .px(px(10.))
+                .text_size(px(12.))
+                .text_color(if on { t.accent } else { t.text_muted });
+            control_row(Icon::Lock, on, tr.fn_lock, Some(tr.fn_lock_info), state)
+        });
 
+        if kbd.is_none() && switches.is_empty() && fn_lock.is_none() {
+            return div();
+        }
         card(Icon::Sliders, tr.system, None, None)
-            .child(control_row(Icon::Keyboard, level > 0, tr.backlight, Some(tr.backlight_info), kbd))
-            .child(inset().p(px(2.)).children(touchpad).children(webcam).child(win_fn).children(usb))
-            .child(control_row(Icon::Lock, s.fn_lock, tr.fn_lock, Some(tr.fn_lock_info), fn_lock))
+            .children(kbd)
+            .when(!switches.is_empty(), |d| d.child(inset().p(px(2.)).children(switches)))
+            .children(fn_lock)
     }
 }

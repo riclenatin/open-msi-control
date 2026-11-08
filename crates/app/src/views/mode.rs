@@ -18,25 +18,19 @@ impl MsiApp {
         let t = theme();
         let tr = self.tr();
         let Some(s) = self.snap.clone() else { return div() };
-        let current = s.scenario.and_then(|c| Scenario::ALL.iter().position(|&x| x == c));
+        // Scenarios the model cannot express are not offered; `i` indexes `Scenario::ALL`.
+        let shown: Vec<(usize, Scenario)> =
+            Scenario::ALL.into_iter().enumerate().filter(|&(_, sc)| s.scenarios.contains(sc)).collect();
+        if shown.is_empty() {
+            return div();
+        }
+        let current = s.scenario.and_then(|c| shown.iter().position(|&(_, x)| x == c));
         let at = current.map_or(0.0, |i| {
             self.transitions.animate(("scenario", 0), i as f32, Spec::movement(motion::MOVE))
         });
 
-        let picker = segmented(
-            "scenario",
-            &tr.scenarios.map(SharedString::from),
-            current,
-            at,
-            Width::Fill,
-            self.keyboard_nav,
-            window,
-            MsiApp::handler(cx, |this, (i, kb): (usize, bool), _, cx| {
-                this.set_scenario(Scenario::ALL[i], kb, cx);
-            }),
-        );
-
-        let hint = match current {
+        let labels: Vec<SharedString> = shown.iter().map(|&(i, _)| tr.scenarios[i].into()).collect();
+        let hint = match current.map(|i| shown[i].0) {
             Some(i) => div()
                 .flex()
                 .items_start()
@@ -54,6 +48,18 @@ impl MsiApp {
                 ),
             None => div().flex().child(pill(Tone::Warning, tr.mode_unknown)),
         };
+        let picker = segmented(
+            "scenario",
+            &labels,
+            current,
+            at,
+            Width::Fill,
+            self.keyboard_nav,
+            window,
+            MsiApp::handler(cx, move |this, (i, kb): (usize, bool), _, cx| {
+                this.set_scenario(shown[i].1, kb, cx);
+            }),
+        );
 
         // With separate profiles, say which one edits go to.
         let source = self.settings.per_power_source.then(|| {

@@ -25,13 +25,13 @@ impl MsiApp {
     pub(super) fn capture_profile(&mut self) {
         let Some(s) = &self.snap else { return };
         let profile = Profile::capture(s);
-        let limit = s.battery_limit.unwrap_or(100);
+        // Models without a charge limit keep whatever was saved.
+        let limit = s.charge_limit.or(self.settings.charge_limit);
         let on_ac = self.on_ac;
-        let changed =
-            *self.settings.slot(on_ac) != Some(profile) || self.settings.charge_limit != Some(limit);
+        let changed = *self.settings.slot(on_ac) != Some(profile) || self.settings.charge_limit != limit;
         if changed {
             *self.settings.slot(on_ac) = Some(profile);
-            self.settings.charge_limit = Some(limit);
+            self.settings.charge_limit = limit;
             self.settings.save();
         }
     }
@@ -51,12 +51,14 @@ impl MsiApp {
         }
 
         let Some(s) = self.snap.clone() else { return };
-        let (Some(profile), Some(limit)) = (*self.settings.slot(on_ac), self.settings.charge_limit) else {
+        // A model with a charge limit restores it only once it has been captured.
+        let uncaptured_limit = s.charge_limit.is_some() && self.settings.charge_limit.is_none();
+        let Some(profile) = self.settings.slot(on_ac).filter(|_| !uncaptured_limit) else {
             // First run (or first time on battery with separate profiles): start from reality.
             self.capture_profile();
             return;
         };
-        let ops = plan(&s, &profile, Some(limit));
+        let ops = plan(&s, &profile, self.settings.charge_limit);
         if ops.is_empty() {
             return;
         }
@@ -85,7 +87,7 @@ impl MsiApp {
                         Op::AutoFan => l.set_auto_fan()?,
                         Op::Curves { cpu, gpu } => l.set_fan_curves(cpu, gpu)?,
                         Op::CoolerBoost(on) => l.set_cooler_boost(on)?,
-                        Op::ChargeLimit(pct) => l.set_battery_limit((pct < 100).then_some(pct))?,
+                        Op::ChargeLimit(pct) => l.set_charge_limit(pct)?,
                     }
                 }
                 Ok(())

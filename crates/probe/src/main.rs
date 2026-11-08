@@ -1,7 +1,7 @@
 //! `msi-probe`: read-only dump of everything `MSI_ACPI` exposes. Run from an elevated shell.
 //!
 //! The output is what a bug report for a new model needs: interface version, firmware string,
-//! the raw replies of every getter and the full EC RAM.
+//! the EC layout the app would use, the raw replies of every getter and the full EC RAM.
 
 #[cfg(windows)]
 fn main() -> std::process::ExitCode {
@@ -44,6 +44,11 @@ mod probe {
         let info = laptop.info();
         println!("MSI WMI {}.{}", info.wmi_version.0, info.wmi_version.1);
         println!("EC firmware {} (build {})", info.ec_firmware, info.ec_build);
+        match info.ec_config {
+            Some(config) => println!("EC layout: msi-ec {config}"),
+            None => println!("EC layout: built-in MS-15K1 (firmware not in the msi-ec table)"),
+        }
+        print!("{}", laptop.layout());
         println!();
 
         for &(method, indices, len) in GETTERS {

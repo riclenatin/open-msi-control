@@ -140,25 +140,28 @@ impl MsiApp {
             }),
         );
 
-        let boost_at = self.transitions.animate(
-            ("boost", 0),
-            f32::from(u8::from(s.cooler_boost)),
-            Spec::movement(motion::TOGGLE),
-        );
-        let boost = SwitchRow {
-            id: "cooler-boost".into(),
-            icon: Icon::Wind,
-            label: "Cooler Boost",
-            description: Some(tr.cooler_boost_hint),
-            explain: None,
-            on: s.cooler_boost,
-            thumb_at: boost_at,
-            ring,
-            on_toggle: MsiApp::handler(cx, |this, (on, kb): (bool, bool), _, cx| {
-                this.set_cooler_boost(on, kb, cx)
-            }),
-        }
-        .render();
+        // Hidden on models without Cooler Boost.
+        let boost = s.cooler_boost.map(|on| {
+            let thumb_at = self.transitions.animate(
+                ("boost", 0),
+                f32::from(u8::from(on)),
+                Spec::movement(motion::TOGGLE),
+            );
+            SwitchRow {
+                id: "cooler-boost".into(),
+                icon: Icon::Wind,
+                label: "Cooler Boost",
+                description: Some(tr.cooler_boost_hint),
+                explain: None,
+                on,
+                thumb_at,
+                ring,
+                on_toggle: MsiApp::handler(cx, |this, (on, kb): (bool, bool), _, cx| {
+                    this.set_cooler_boost(on, kb, cx)
+                }),
+            }
+            .render()
+        });
 
         // Pending edits get their own row so the buttons never crowd the mode switch.
         let unsaved = dirty.then(|| {
@@ -194,6 +197,6 @@ impl MsiApp {
             .child(editor)
             .children(unsaved)
             .child(div().flex().child(mode))
-            .child(inset().child(boost))
+            .children(boost.map(|b| inset().child(b)))
     }
 }

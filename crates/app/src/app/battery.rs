@@ -13,15 +13,12 @@ pub const BATTERY_MIN: u8 = 40;
 
 impl MsiApp {
     pub(crate) fn battery_value(&self) -> u8 {
-        self.battery_preview
-            .or_else(|| self.snap.as_ref().map(|s| s.battery_limit.unwrap_or(100)))
-            .unwrap_or(100)
+        self.battery_preview.or_else(|| self.snap.as_ref().and_then(|s| s.charge_limit)).unwrap_or(100)
     }
 
     fn write_battery(&mut self, value: u8, cx: &mut Context<Self>) {
         self.battery_write = None;
-        let limit = (value < 100).then_some(value);
-        self.act(|t| t.err_battery, |s| s.battery_limit = limit, move |l| l.set_battery_limit(limit), cx);
+        self.act(|t| t.err_battery, |s| s.charge_limit = Some(value), move |l| l.set_charge_limit(value), cx);
         self.battery_preview = None;
     }
 

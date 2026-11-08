@@ -33,11 +33,16 @@ MSI laptops. Native Rust, GPU-rendered UI ([gpui](https://gpui.rs)), no backgrou
 
 ## Supported hardware
 
-Developed and verified on **MSI Cyborg 15 A12VF** (board MS-15K1, EC `15K1IMS1.113`). It should
-work on MSI laptops whose firmware reports MSI WMI interface **2.x** and uses the same EC layout
-as the Linux `msi-ec` `CONF_G2_1` family; the app refuses to start on other interface versions.
+Developed and verified on **MSI Cyborg 15 A12VF** (board MS-15K1, EC `15K1IMS1.113`). Other MSI
+laptops whose firmware reports MSI WMI interface **2.x** are supported through the model table of
+the Linux [msi-ec](https://github.com/BeardOverflow/msi-ec) driver: the EC firmware version picks
+one of its 21 register layouts (373 firmware versions), and controls the model lacks are hidden.
+Those layouts are msi-ec's and not verified on hardware by this project. Firmware msi-ec does not
+list gets the Cyborg 15 layout and the header shows *Model not recognised*. The app refuses to
+start on other interface versions.
 
-Got another model? Run `msi-probe.exe` (read-only) and open a *Support a new laptop model* issue.
+Got another model? Run `msi-probe.exe` (read-only; it prints the layout the app would use) and
+open a *Support a new laptop model* issue.
 
 ## Install / run
 
@@ -81,7 +86,8 @@ map and how it was derived.
 ## Disclaimer
 
 Not affiliated with MSI. Writing to the embedded controller is at your own risk; the app only
-touches registers verified on real hardware and keeps all other bits intact.
+touches registers verified on real hardware or listed by msi-ec for your EC firmware, and keeps
+all other bits intact.
 
 ## License
 
