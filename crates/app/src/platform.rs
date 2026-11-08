@@ -177,8 +177,9 @@ pub fn show_window(window: &gpui::Window) {
     window.activate_window();
 }
 
-/// HTTPS GET through WinINet (system proxy and certificate store). Blocking. Errors on non-2xx.
-pub fn http_get(url: &str) -> std::io::Result<Vec<u8>> {
+/// HTTPS GET through WinINet (system proxy and certificate store). Blocking.
+/// Returns the HTTP status and, for 2xx, the body (empty otherwise).
+pub fn http_get(url: &str) -> std::io::Result<(u32, Vec<u8>)> {
     use std::ffi::c_void;
     use windows::Win32::Networking::WinInet::{
         HTTP_QUERY_FLAG_NUMBER, HTTP_QUERY_STATUS_CODE, HttpQueryInfoW, INTERNET_FLAG_NO_CACHE_WRITE,
@@ -220,11 +221,11 @@ pub fn http_get(url: &str) -> std::io::Result<Vec<u8>> {
             &mut len,
             None,
         )?;
+        let mut body = Vec::new();
         if !(200..300).contains(&status) {
-            return Err(std::io::Error::other(format!("HTTP {status}")));
+            return Ok((status, body));
         }
 
-        let mut body = Vec::new();
         let mut buf = [0u8; 16 * 1024];
         loop {
             let mut read = 0u32;
@@ -234,7 +235,7 @@ pub fn http_get(url: &str) -> std::io::Result<Vec<u8>> {
             }
             body.extend_from_slice(&buf[..read as usize]);
         }
-        Ok(body)
+        Ok((status, body))
     }
 }
 

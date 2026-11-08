@@ -36,7 +36,13 @@ pub fn is_newer(tag: &str, current: &str) -> bool {
 
 /// The latest release if it is newer than this build. Blocking; run off the UI thread.
 pub fn check() -> std::io::Result<Option<Release>> {
-    let body = crate::platform::http_get(LATEST)?;
+    let (status, body) = crate::platform::http_get(LATEST)?;
+    match status {
+        200..300 => {}
+        // The repository has no published release yet.
+        404 => return Ok(None),
+        _ => return Err(std::io::Error::other(format!("HTTP {status}"))),
+    }
     let release: Release = serde_json::from_slice(&body).map_err(std::io::Error::other)?;
     Ok(is_newer(&release.tag_name, env!("CARGO_PKG_VERSION")).then_some(release))
 }

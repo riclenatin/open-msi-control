@@ -62,8 +62,8 @@ cargo run --release
 Building needs Rust stable, Visual Studio Build Tools (C++ workload) and the Windows SDK
 (`fxc.exe`, used by gpui to compile shaders).
 
-> MSI Center can stay installed, but its service re-applies its own scenario at boot and after
-> sleep. Either uninstall it or re-apply your settings afterwards.
+> MSI Center can stay installed. Its service re-applies its own scenario at boot and after sleep;
+> with *Restore settings* on (the default) the app puts yours back within seconds.
 
 ## How it works
 

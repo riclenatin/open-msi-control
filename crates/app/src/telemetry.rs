@@ -95,18 +95,15 @@ impl History {
         out
     }
 
-    /// Sample nearest to `age` seconds ago.
-    pub fn at_age(&self, now: Instant, age: f32) -> Option<&Sample> {
+    /// Sample nearest to `age` seconds ago, if one lies within `tolerance` of it (no answer over
+    /// gaps such as sleep or before the history starts).
+    pub fn at_age(&self, now: Instant, age: f32, tolerance: Duration) -> Option<&Sample> {
         let target = now.checked_sub(Duration::from_secs_f32(age.max(0.0)))?;
         let i = self.samples.partition_point(|s| s.at < target);
         let after = self.samples.get(i);
         let before = i.checked_sub(1).and_then(|j| self.samples.get(j));
-        match (before, after) {
-            (Some(b), Some(a)) => {
-                Some(if target.duration_since(b.at) <= a.at.duration_since(target) { b } else { a })
-            }
-            (b, a) => b.or(a),
-        }
+        let dist = |s: &Sample| if s.at < target { target - s.at } else { s.at - target };
+        [before, after].into_iter().flatten().min_by_key(|s| dist(s)).filter(|s| dist(s) <= tolerance)
     }
 
     /// Most recent `n` fan readings (oldest first), for sparklines.
@@ -192,6 +189,20 @@ mod tests {
         assert!(pts.iter().any(|p| p.cpu == Some(99)), "the one-sample spike survives");
         assert!(pts.windows(2).all(|w| w[0].x <= w[1].x));
         assert!(h.series(now, Duration::from_secs(60), 400).len() <= 61, "only the last minute");
+    }
+
+    #[test]
+    fn hover_finds_nothing_over_gaps_or_before_history() {
+        let base = Instant::now();
+        let mut h = History::default();
+        h.push_sample(sample(base, 50));
+        h.push_sample(sample(base + Duration::from_secs(600), 70));
+        let now = base + Duration::from_secs(600);
+        let tol = Duration::from_secs(3);
+        assert_eq!(h.at_age(now, 1.0, tol).and_then(|s| s.cpu_temp), Some(70));
+        assert_eq!(h.at_age(now, 599.0, tol).and_then(|s| s.cpu_temp), Some(50));
+        assert!(h.at_age(now, 300.0, tol).is_none(), "middle of a sleep gap");
+        assert!(h.at_age(now, 3600.0, tol).is_none(), "before the first sample");
     }
 
     #[test]

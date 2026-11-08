@@ -10,7 +10,7 @@ use crate::app::MsiApp;
 use crate::assets::Icon;
 use crate::charts::{TEMP_DOMAIN, TEMP_HOT, TimelineChart, bars, segment_meter, unit};
 use crate::motion::{self, Spec};
-use crate::telemetry::RANGES;
+use crate::telemetry::{POLL, RANGES};
 use crate::theme::theme;
 use crate::ui::{Button, Variant, Width, card, inset, mono, segmented, tnum};
 
@@ -85,7 +85,9 @@ impl MsiApp {
 
         let tooltip = self.chart_hover.and_then(|x| {
             let age = (1.0 - x) * range.as_secs_f32();
-            let sample = self.history.at_age(Instant::now(), age)?;
+            // About two chart columns, never less than two polls.
+            let tolerance = (range / 180).max(POLL * 2);
+            let sample = self.history.at_age(Instant::now(), age, tolerance)?;
             let ago = Instant::now().duration_since(sample.at).as_secs();
             Some((x, sample.cpu_temp, sample.gpu_temp, ago))
         });

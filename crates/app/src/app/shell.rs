@@ -75,32 +75,35 @@ impl MsiApp {
         }
         let (x, y) = platform::tray_popup_origin(flyout::WIDTH, flyout::HEIGHT);
         let app = cx.entity();
-        let opened = cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds {
-                    origin: point(px(x), px(y)),
-                    size: size(px(flyout::WIDTH), px(flyout::HEIGHT)),
-                })),
-                titlebar: None,
-                kind: WindowKind::PopUp,
-                is_movable: false,
-                is_resizable: false,
-                is_minimizable: false,
-                window_background: WindowBackgroundAppearance::Opaque,
-                // Opened by the user's click on the icon, so taking focus is expected here.
-                focus: true,
-                show: true,
-                ..Default::default()
-            },
-            |window, cx| {
-                platform::style_popup(window);
-                cx.new(|cx| Flyout::new(&app, window, cx))
-            },
-        );
-        match opened {
-            Ok(h) => self.flyout = Some(h),
-            Err(e) => eprintln!("flyout: {e}"),
-        }
+        // Deferred: the new window renders right away and reads `MsiApp`, which is leased here.
+        cx.defer(move |cx| {
+            let opened = cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds {
+                        origin: point(px(x), px(y)),
+                        size: size(px(flyout::WIDTH), px(flyout::HEIGHT)),
+                    })),
+                    titlebar: None,
+                    kind: WindowKind::PopUp,
+                    is_movable: false,
+                    is_resizable: false,
+                    is_minimizable: false,
+                    window_background: WindowBackgroundAppearance::Opaque,
+                    // Opened by the user's click on the icon, so taking focus is expected here.
+                    focus: true,
+                    show: true,
+                    ..Default::default()
+                },
+                |window, cx| {
+                    platform::style_popup(window);
+                    cx.new(|cx| Flyout::new(&app, window, cx))
+                },
+            );
+            match opened {
+                Ok(h) => app.update(cx, |this, _| this.flyout = Some(h)),
+                Err(e) => eprintln!("flyout: {e}"),
+            }
+        });
     }
 
     /// Called by the flyout when it closes itself.
