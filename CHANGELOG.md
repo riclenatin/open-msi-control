@@ -5,6 +5,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-08
+
 ### Added
 
 - `msi-acpi` library: `MSI_ACPI` WMI transport, feature layer for MSI WMI 2.x firmware
@@ -32,3 +34,6 @@ All notable changes are documented here. The format follows
   table (21 configs, 373 firmware versions); controls a model lacks are hidden and their setters
   refuse to write. Unknown firmware uses the Cyborg 15 layout and the header says *Model not
   recognised*. `msi-probe` prints the matched config and the layout in use.
+
+[Unreleased]: https://github.com/riclenatin/open-msi-control/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/riclenatin/open-msi-control/releases/tag/v0.1.0
