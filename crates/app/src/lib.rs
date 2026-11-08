@@ -13,10 +13,13 @@ mod dither;
 mod i18n;
 mod motion;
 mod platform;
+mod profile;
+mod settings;
 mod telemetry;
 mod theme;
 mod tray;
 mod ui;
+mod update;
 mod views;
 
 use std::borrow::Cow;

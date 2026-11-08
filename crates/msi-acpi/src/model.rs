@@ -15,6 +15,7 @@ pub enum Fan {
 /// MSI Center keeps the scenario as software state; it is recovered here from the EC registers
 /// the scenario writes (shift mode and the silent fan bit).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(rename_all = "snake_case"))]
 pub enum Scenario {
     ExtremePerformance,
     Balanced,
@@ -107,6 +108,8 @@ pub struct Snapshot {
     /// `None` when the model has no webcam switch.
     pub webcam: Option<bool>,
     pub win_fn_swapped: bool,
+    /// Fn Lock engaged (read-only; toggled on the keyboard with Fn+Esc).
+    pub fn_lock: bool,
     pub kbd_backlight: u8,
     /// `None` when the model has no USB power share.
     pub usb_share: Option<bool>,

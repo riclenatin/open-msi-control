@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+      - name: Build installer and portable zip
+        run: ./packaging/build-release.ps1
+      - name: Release notes from CHANGELOG
+        id: notes
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          "version=$version" >> $env:GITHUB_OUTPUT
+          # The "## [<version>]" section, without the trailing link references.
+          $notes = [System.Collections.Generic.List[string]]::new()
+          $inside = $false
+          foreach ($line in Get-Content CHANGELOG.md -Encoding utf8) {
+            if ($line -match '^## \[') {
+              if ($inside) { break }
+              $inside = $line -match ('^## \[' + [regex]::Escape($version) + '\]')
+              continue
+            }
+            if ($inside -and $line -match '^\[[^\]]+\]:\s') { break }
+            if ($inside) { $notes.Add($line) }
+          }
+          ($notes -join "`n").Trim() | Set-Content dist/release-notes.md -Encoding utf8
+      # Assets are named after the tag, so a tag that differs from the workspace version fails here
+      # instead of publishing names the update checker cannot find.
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: dist/release-notes.md
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/open-msi-control-${{ steps.notes.outputs.version }}-setup.exe
+            dist/open-msi-control-${{ steps.notes.outputs.version }}-portable.zip

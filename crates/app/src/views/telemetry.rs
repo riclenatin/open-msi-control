@@ -1,14 +1,18 @@
 use std::time::Instant;
 
-use gpui::{Context, Div, Rgba, Window, div, linear_color_stop, linear_gradient, prelude::*, px, relative};
+use gpui::{
+    Context, Div, Rgba, SharedString, Window, div, linear_color_stop, linear_gradient, prelude::*, px,
+    relative,
+};
 use msi_acpi::FanStatus;
 
 use crate::app::MsiApp;
 use crate::assets::Icon;
 use crate::charts::{TEMP_DOMAIN, TEMP_HOT, TimelineChart, bars, segment_meter, unit};
-use crate::telemetry::WINDOW;
+use crate::motion::{self, Spec};
+use crate::telemetry::RANGES;
 use crate::theme::theme;
-use crate::ui::{card, inset, mono, tnum};
+use crate::ui::{Button, Variant, Width, card, inset, mono, segmented, tnum};
 
 const CHART_H: f32 = 96.;
 /// Fan tach ceiling used to scale sparklines.
@@ -49,16 +53,38 @@ fn fan_row(name: &'static str, dashed: bool, f: &FanStatus, recent: &[u32], colo
 impl MsiApp {
     pub(crate) fn render_telemetry(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let t = theme();
         let tr = self.tr();
         let Some(s) = self.snap.clone() else { return div() };
         let label_fade = Rgba { a: 0.0, ..t.card };
+        let range = RANGES[self.chart_range];
+
+        let range_at = self.transitions.animate(
+            ("chart-range", 0),
+            self.chart_range as f32,
+            Spec::movement(motion::MOVE),
+        );
+        let ranges = segmented(
+            "chart-range",
+            &tr.ranges.map(SharedString::from),
+            Some(self.chart_range),
+            range_at,
+            Width::Content,
+            self.keyboard_nav,
+            window,
+            MsiApp::handler(cx, |this, (i, kb): (usize, bool), _, cx| {
+                this.snap_frame |= kb;
+                this.chart_range = i;
+                this.chart_hover = None;
+                cx.notify();
+            }),
+        );
 
         let tooltip = self.chart_hover.and_then(|x| {
-            let age = (1.0 - x) * WINDOW.as_secs_f32();
+            let age = (1.0 - x) * range.as_secs_f32();
             let sample = self.history.at_age(Instant::now(), age)?;
             let ago = Instant::now().duration_since(sample.at).as_secs();
             Some((x, sample.cpu_temp, sample.gpu_temp, ago))
@@ -74,7 +100,7 @@ impl MsiApp {
             .relative()
             .h(px(CHART_H))
             .w_full()
-            .child(TimelineChart::new(&self.history, self.chart_hover).into_canvas(on_hover))
+            .child(TimelineChart::new(&self.history, range, self.chart_hover).into_canvas(on_hover))
             // Axis labels sit on a fade so the lines passing behind them stay out of the way.
             .child(div().absolute().top_0().bottom_0().left_0().w(px(44.)).bg(linear_gradient(
                 90.,
@@ -112,11 +138,21 @@ impl MsiApp {
                     )
             }));
 
-        card(Icon::Chart, tr.telemetry, Some(tr.telemetry_info), None).child(chart).child(
-            inset()
-                .child(fan_row("CPU", false, &s.cpu, &self.history.recent_rpm(20, false), t.accent))
-                .child(div().h(px(1.)).mx(px(10.)).bg(t.hairline))
-                .child(fan_row("GPU", true, &s.gpu, &self.history.recent_rpm(20, true), t.secondary)),
-        )
+        card(Icon::Chart, tr.telemetry, Some(tr.telemetry_info), Some(ranges.into_any_element()))
+            .child(chart)
+            .child(
+                inset()
+                    .child(fan_row("CPU", false, &s.cpu, &self.history.recent_rpm(20, false), t.accent))
+                    .child(div().h(px(1.)).mx(px(10.)).bg(t.hairline))
+                    .child(fan_row("GPU", true, &s.gpu, &self.history.recent_rpm(20, true), t.secondary)),
+            )
+            .child(
+                div().flex().justify_end().child(
+                    Button::new("export-csv", tr.export_csv, Variant::Secondary)
+                        .icon(Icon::Download)
+                        .ring(self.keyboard_nav)
+                        .on_click(cx.listener(|this, _, _, cx| this.export_csv(cx))),
+                ),
+            )
     }
 }

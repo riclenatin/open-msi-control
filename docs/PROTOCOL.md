@@ -57,6 +57,7 @@ All writes are read-modify-write of one byte; bits not listed are preserved.
 | `0xD3` | `0x80 \| level` | keyboard backlight 0..=3 (MSI writes `(v & 0x80) \| level`) |
 | `0xD4` | bit4 / bit7 | fan mode: silent / advanced (user curve); `0x0D` = auto |
 | `0xD7` | `0x80 \| pct` | battery stop-charge threshold; `0x80` or `0xE4` (100 %) = no limit |
+| `0xD9` | bit1 | **cleared** = Fn Lock engaged; read-only (see below) |
 | `0xE8` | bit4 | Win/Fn swap, **cleared** = swapped |
 
 ### Fan curves
@@ -83,9 +84,20 @@ MSI Center keeps the selected scenario in the registry; on non-TDP models it onl
 
 The scenario is therefore recovered from these two registers.
 
+### Fn Lock and touchpad
+
+Fn Lock is owned by the EC: Fn+Esc toggles `0xD9` bit1 and MSI Center only reads it. The other
+bits of `0xD9` are written by MSI's service, so this project never writes the byte.
+
+The touchpad has no EC register. MSI Center toggles it by sending the Precision Touchpad hotkey
+Ctrl+Win+F24; the resulting state is
+`HKCU\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad\Status\Enabled` (DWORD).
+
 ## Known side effects
 
-- *MSI Center Service* re-applies its own scenario at boot and after resume from sleep.
+- *MSI Center Service* re-applies its own scenario at boot and after resume from sleep. The app
+  re-applies the user's profile for 30 s after start, wake (a gap between polls) and a power-source
+  change, then adopts whatever the user changes.
 - Super Battery in MSI Center also switches the Windows power mode; this project does not.
 
 ## Unsupported on MS-15K1

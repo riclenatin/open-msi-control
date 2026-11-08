@@ -1,7 +1,7 @@
 //! Temperature history: CPU as a solid line with a soft area, GPU dashed (distinguishable
 //! without colour), horizontal guides and a hover cursor.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use gpui::{
     Bounds, ContentMask, Hitbox, HitboxBehavior, MouseMoveEvent, PathBuilder, Pixels, Rgba, Window, canvas,
@@ -9,7 +9,7 @@ use gpui::{
 };
 
 use super::{at, unit};
-use crate::telemetry::{History, Sample, WINDOW};
+use crate::telemetry::History;
 use crate::theme::theme;
 use crate::ui::Handler;
 
@@ -18,33 +18,25 @@ pub const GUIDES: [f32; 2] = [50.0, 70.0];
 /// Above this the lines turn red (same threshold as the header gauges).
 pub const TEMP_HOT: f32 = 90.0;
 
+/// Chart columns: enough for a crisp line at the card's width, cheap to tessellate.
+const COLUMNS: usize = 360;
+
 #[derive(Debug)]
 pub struct TimelineChart {
-    pub points: Vec<(f32, Option<u8>, Option<u8>)>,
+    pub points: Vec<crate::telemetry::Point>,
     /// Hover position, 0..=1 from the left.
     pub hover: Option<f32>,
 }
 
 impl TimelineChart {
-    pub fn new(history: &History, hover: Option<f32>) -> Self {
-        let now = Instant::now();
-        let window = WINDOW.as_secs_f32();
-        let points = history
-            .samples()
-            .iter()
-            .map(|s: &Sample| {
-                let age = now.duration_since(s.at).as_secs_f32();
-                (1.0 - age / window, s.cpu_temp, s.gpu_temp)
-            })
-            .filter(|p| p.0 >= -0.02)
-            .collect();
-        Self { points, hover }
+    pub fn new(history: &History, window: Duration, hover: Option<f32>) -> Self {
+        Self { points: history.series(Instant::now(), window, COLUMNS), hover }
     }
 
     fn series(&self, gpu: bool) -> Vec<(f32, f32)> {
         self.points
             .iter()
-            .filter_map(|&(x, c, g)| (if gpu { g } else { c }).map(|t| (x, unit(f32::from(t), TEMP_DOMAIN))))
+            .filter_map(|p| (if gpu { p.gpu } else { p.cpu }).map(|t| (p.x, unit(f32::from(t), TEMP_DOMAIN))))
             .collect()
     }
 

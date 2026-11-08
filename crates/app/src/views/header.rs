@@ -37,7 +37,7 @@ fn window_button(
 }
 
 /// Temperature in the middle of the arc, sensor name between its feet.
-fn gauge(label: &'static str, value: Option<f32>, raw: Option<u8>) -> impl IntoElement {
+pub(super) fn gauge(label: &'static str, value: Option<f32>, raw: Option<u8>) -> impl IntoElement {
     let t = theme();
     div()
         .relative()

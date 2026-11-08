@@ -38,7 +38,31 @@ elevated terminal; it only reads). Mention which features you tried and what hap
   controls keyboard-reachable. See the UI conventions in [`AGENTS.md`](AGENTS.md).
 - Update `CHANGELOG.md` for anything a user would notice.
 
+## Releasing
+
+1. Set `version` in `[workspace.package]` of `Cargo.toml` (then `cargo check` to update
+   `Cargo.lock`) and move the `[Unreleased]` entries of `CHANGELOG.md` under
+   `## [x.y.z] - YYYY-MM-DD`.
+2. Commit, then tag and push. The tag is the version with a `v` prefix and must match
+   `Cargo.toml`:
+
+   ```sh
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+3. [`release.yml`](.github/workflows/release.yml) runs the tests, builds the release and
+   publishes a GitHub Release with `open-msi-control-x.y.z-setup.exe` and
+   `open-msi-control-x.y.z-portable.zip`. The notes are the `CHANGELOG.md` section for the version
+   followed by GitHub's generated notes.
+
+The in-app update checker looks for these exact asset names; do not rename them.
+
+To build the same artifacts locally, install [Inno Setup 6](https://jrsoftware.org/isdl.php) and
+run `packaging/build-release.ps1` from PowerShell; it writes both files to `dist/`. It finds
+`ISCC.exe` via `-Iscc <path>`, `$env:ISCC` or the default install folder.
+
 ## Licensing
 
-By contributing you agree that your work is dual-licensed under MIT and Apache-2.0, like the
+By contributing you agree that your work is licensed under GPL-2.0-or-later, like the
 rest of the project. Do not paste code from MSI software or other proprietary sources.

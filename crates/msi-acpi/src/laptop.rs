@@ -148,6 +148,7 @@ impl<T: Transport> Laptop<T> {
                 .then_some(battery_pct),
             webcam: (caps & ec::CAP_WEBCAM != 0).then_some(webcam & ec::WEBCAM_ON != 0),
             win_fn_swapped: self.read_ec(ec::WIN_FN)? & ec::WIN_FN_NORMAL == 0,
+            fn_lock: self.read_ec(ec::STATUS)? & ec::STATUS_FN_UNLOCKED == 0,
             kbd_backlight: self.read_ec(ec::KBD_BACKLIGHT)? & ec::KBD_LEVEL_MASK,
             usb_share: (usb & ec::USB_SHARE_SUPPORTED != 0).then_some(usb & ec::USB_SHARE_ON != 0),
         })

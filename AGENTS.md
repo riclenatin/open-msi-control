@@ -16,8 +16,12 @@ battery parts of MSI Center on MSI laptops. It talks to the firmware through the
 | `crates/msi-acpi/src/ec.rs` | The only place EC addresses and bit masks are defined. |
 | `crates/msi-acpi/tests` | Behaviour tests against `FakeEc`, seeded from a real EC dump in `tests/fixtures`. |
 | `crates/app` | The gpui application (`open-msi-control.exe`). |
-| `crates/app/src/app.rs` | Root view `MsiApp`: all UI state, polling, writes, intents. |
-| `crates/app/src/views/` | One file per card (single narrow column); each adds `render_*` methods to `MsiApp`. |
+| `crates/app/src/app/` | Root view `MsiApp`: `mod.rs` (state, render), `hardware.rs` (polling, EC writes), `profiles.rs` (remember/restore), `fan_curve.rs`, `battery.rs`, `shell.rs` (tray, flyout, app settings), `export.rs` (CSV), `updates.rs`. |
+| `crates/app/src/settings.rs` | `settings.json` in `%APPDATA%` (serde, atomic save). |
+| `crates/app/src/profile.rs` | Per-power-source `Profile` and the pure `plan()` that diffs it against a `Snapshot`. |
+| `crates/app/src/telemetry.rs` | 24 h sensor history, column decimation for charts, CSV. |
+| `crates/app/src/update.rs` | GitHub latest-release check (WinINet in `platform.rs`). |
+| `crates/app/src/views/` | One file per card (single narrow column); each adds `render_*` methods to `MsiApp`. `flyout.rs` is the tray popup window. |
 | `crates/app/src/ui/` | Stateless components (card/inset surfaces, button, segmented, switch, pill, drag). |
 | `crates/app/src/charts/` | Canvas-painted charts (timeline, fan curve, tick gauge, meters). |
 | `crates/app/src/theme/` | OKLCH tokens + WCAG contrast tests. |

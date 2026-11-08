@@ -50,6 +50,7 @@ fn decodes_snapshot_from_real_dump() {
     assert_eq!(s.battery_limit, None, "0x80 = limit bit with 0 % means no limit");
     assert_eq!(s.webcam, Some(true));
     assert!(s.win_fn_swapped);
+    assert!(s.fn_lock, "0xD9 = 0x05: bit1 clear means Fn Lock engaged");
     assert_eq!(s.kbd_backlight, 1);
     assert_eq!(s.usb_share, Some(true));
 }

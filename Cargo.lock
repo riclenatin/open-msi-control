@@ -2696,6 +2696,7 @@ dependencies = [
 name = "msi-acpi"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "thiserror 2.0.21",
  "windows",
 ]
@@ -2992,6 +2993,8 @@ dependencies = [
  "image",
  "msi-acpi",
  "raw-window-handle",
+ "serde",
+ "serde_json",
  "windows",
 ]
 

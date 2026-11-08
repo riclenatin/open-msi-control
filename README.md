@@ -7,20 +7,27 @@ MSI laptops. Native Rust, GPU-rendered UI ([gpui](https://gpui.rs)), no backgrou
 
 ## Features
 
-- **Live telemetry** — CPU/GPU temperature gauges, 5-minute temperature timeline (red above 90 °C) with hover
-  readout, fan RPM and EC target duty.
+- **Live telemetry** — CPU/GPU temperature gauges, temperature timeline over 5 min, 1 h or 24 h
+  (red above 90 °C) with hover readout, fan RPM and EC target duty; CSV export of the history.
 - **Scenarios** — Extreme Performance, Balanced, Silent, Super Battery (the same registers MSI
   Center writes).
 - **Fan curves** — drag the six editable points per fan (CPU and GPU), apply or revert; curves
   stay monotonic and never exceed the firmware's top point. Auto mode and Cooler Boost.
 - **Battery charge limit** — slider (40–100 %) and the Battery Master presets (100/80/60 %).
-- **System** — keyboard backlight, webcam kill switch, Win/Fn swap, USB power share.
-- **Tray** — close to tray, left click shows/hides the window, right click opens quick actions
-  (scenarios, Cooler Boost, quit); the icon tooltip shows CPU/GPU temperatures. One instance only.
+- **Profiles** — the app re-applies your scenario, fan curves, Cooler Boost and charge limit after
+  boot, wake and power changes (MSI Center Service overwrites them); optionally a separate profile
+  on battery and on AC.
+- **System** — keyboard backlight, touchpad, webcam kill switch, Win/Fn swap, USB power share,
+  Fn Lock state.
+- **Tray** — close to tray; left click opens a flyout with temperatures, scenarios, fan mode,
+  Cooler Boost and charge presets; right click opens quick actions; the icon tooltip shows CPU/GPU
+  temperatures. One instance only.
 - **Start with Windows** — a Task Scheduler logon task starts the app elevated in the tray without
   a UAC prompt (it runs on battery too).
-- Russian and English UI (follows the Windows display language, switchable in System), (i) hints
-  explaining every setting.
+- Russian and English UI (follows the Windows display language, switchable in the App card), (i)
+  hints explaining every setting.
+- Daily update check against GitHub Releases (can be turned off). Settings live in
+  `%APPDATA%\open-msi-control\settings.json`.
 - Keyboard navigation (Tab, arrows, Enter/Space) with focus rings, WCAG AA contrast, honours the
   Windows "Animation effects" setting.
 
@@ -36,6 +43,17 @@ Got another model? Run `msi-probe.exe` (read-only) and open a *Support a new lap
 
 Requires Windows 10/11 x64 and Administrator rights (the firmware interface is restricted to
 Administrators; the executable requests elevation).
+
+Download the latest build from [Releases](https://github.com/riclenatin/open-msi-control/releases):
+
+- `open-msi-control-<version>-setup.exe` — installer with a Start menu shortcut (desktop shortcut
+  optional) and an uninstaller. Uninstalling also removes the *Start with Windows* task; your
+  settings are kept.
+- `open-msi-control-<version>-portable.zip` — unzip anywhere and run `open-msi-control.exe`.
+
+Both include `msi-probe.exe`.
+
+To build and run from source:
 
 ```sh
 cargo run --release
@@ -67,5 +85,6 @@ touches registers verified on real hardware and keeps all other bits intact.
 
 ## License
 
-Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
+[GPL-2.0-or-later](LICENSE). Model register tables are derived from the Linux
+[msi-ec](https://github.com/BeardOverflow/msi-ec) driver (GPL-2.0).
 Bundled fonts: Geist (SIL OFL 1.1). Icons: Phosphor (MIT).

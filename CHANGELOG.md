@@ -20,3 +20,11 @@ All notable changes are documented here. The format follows
   single instance.
 - `msi-probe` diagnostic dump for new-model reports.
 - Protocol documentation in `docs/PROTOCOL.md`.
+- Profile restore: the scenario, fan curves, Cooler Boost and charge limit are re-applied after
+  boot, wake and power-source changes; optional separate profiles on AC and battery.
+- Tray flyout (left click): temperatures, scenarios, fan mode, Cooler Boost, charge presets.
+- Touchpad switch (Precision Touchpad hotkey) and read-only Fn Lock state.
+- Temperature timeline ranges of 5 min, 1 h and 24 h; CSV export of the 24 h history.
+- Daily update check against GitHub Releases; installer and portable zip.
+- Settings stored in `%APPDATA%\open-msi-control\settings.json`.
+- Licensed under GPL-2.0-or-later.

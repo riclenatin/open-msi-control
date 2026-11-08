@@ -42,3 +42,8 @@ pub(crate) const BATTERY_PERCENT_MASK: u8 = 0x7F;
 /// bit4 cleared = Win and Fn keys swapped.
 pub(crate) const WIN_FN: u8 = 0xE8;
 pub(crate) const WIN_FN_NORMAL: u8 = 1 << 4;
+
+/// Status flags; bit1 cleared = Fn Lock engaged. The EC toggles it on Fn+Esc; MSI Center only
+/// reads it (other bits of this byte are owned by MSI's service), so this crate never writes it.
+pub(crate) const STATUS: u8 = 0xD9;
+pub(crate) const STATUS_FN_UNLOCKED: u8 = 1 << 1;

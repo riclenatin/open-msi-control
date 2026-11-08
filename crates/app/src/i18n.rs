@@ -1,6 +1,9 @@
 //! UI strings. One typed table per language: a missing translation is a compile error.
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Lang {
     Ru,
     En,
@@ -8,17 +11,6 @@ pub enum Lang {
 
 impl Lang {
     pub const ALL: [Self; 2] = [Self::Ru, Self::En];
-
-    pub const fn code(self) -> &'static str {
-        match self {
-            Self::Ru => "ru",
-            Self::En => "en",
-        }
-    }
-
-    pub fn from_code(code: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|l| l.code() == code)
-    }
 
     /// Russian for a Russian Windows UI, English otherwise.
     pub fn from_windows_ui(primary_lang_id: u16) -> Self {
@@ -89,6 +81,29 @@ pub struct Strings {
     pub tray_open: &'static str,
     pub tray_exit: &'static str,
     pub tray_tooltip: fn(Option<u8>, Option<u8>) -> String,
+    pub open_app: &'static str,
+
+    pub restore: &'static str,
+    pub restore_info: &'static str,
+    pub per_source: &'static str,
+    pub per_source_info: &'static str,
+    pub profile_ac: &'static str,
+    pub profile_battery: &'static str,
+
+    pub touchpad: &'static str,
+    pub touchpad_info: &'static str,
+    pub fn_lock: &'static str,
+    pub fn_lock_info: &'static str,
+    pub on: &'static str,
+    pub off: &'static str,
+
+    pub ranges: [&'static str; 3],
+    pub export_csv: &'static str,
+    pub exported: fn(&str) -> String,
+
+    pub check_updates: &'static str,
+    pub check_updates_info: &'static str,
+    pub update_available: fn(&str) -> String,
 
     pub err_scenario: &'static str,
     pub err_cooler_boost: &'static str,
@@ -100,6 +115,9 @@ pub struct Strings {
     pub err_auto_fan: &'static str,
     pub err_battery: &'static str,
     pub err_autostart: &'static str,
+    pub err_restore: &'static str,
+    pub err_touchpad: &'static str,
+    pub err_export: &'static str,
 }
 
 pub static RU: Strings = Strings {
@@ -109,13 +127,19 @@ pub static RU: Strings = Strings {
     no_access_title: "Нет доступа к прошивке ноутбука",
     no_access_hint: "Нужен ноутбук MSI с интерфейсом WMI 2.x и запуск от имени администратора.",
     model_fallback: "Ноутбук MSI",
-    footer: "MSI Center Service может вернуть свой сценарий после перезагрузки и сна.",
+    footer: "MSI Center Service может вернуть свой сценарий после перезагрузки и сна — включите \
+             «Восстанавливать настройки».",
     read_failed: "Не удалось прочитать датчики",
 
     telemetry: "Телеметрия",
-    telemetry_info: "Температура CPU и GPU за последние 5 минут, данные обновляются раз в 1,5 с. \
-                     Выше 90 °C линия краснеет. Ниже — обороты вентиляторов и их текущая мощность.",
-    seconds_ago: |s| format!("{s} с назад"),
+    telemetry_info: "Температура CPU и GPU за выбранный период (до 24 часов), данные обновляются раз \
+                     в 1,5 с. Выше 90 °C линия краснеет. Ниже — обороты вентиляторов и их текущая \
+                     мощность. «Экспорт CSV» сохраняет всю историю в таблицу.",
+    seconds_ago: |s| match s {
+        0..90 => format!("{s} с назад"),
+        90..5400 => format!("{} мин назад", s / 60),
+        _ => format!("{} ч {} мин назад", s / 3600, s % 3600 / 60),
+    },
 
     mode: "Режим",
     mode_info: "Сценарии MSI Center. Меняют профиль мощности в прошивке ноутбука: \
@@ -174,6 +198,36 @@ pub static RU: Strings = Strings {
     tray_open: "Открыть",
     tray_exit: "Выход",
     tray_tooltip: |cpu, gpu| format!("Open MSI Control\nCPU {} · GPU {}", temp(cpu), temp(gpu)),
+    open_app: "Открыть приложение",
+
+    restore: "Восстанавливать настройки",
+    restore_info: "После включения, выхода из сна и смены питания приложение возвращает ваш \
+                   режим, кривую вентиляторов, Cooler Boost и лимит заряда — даже если служба \
+                   MSI Center их перезаписала.",
+    per_source: "Отдельный профиль от батареи",
+    per_source_info: "От сети и от батареи запоминаются разные режим, вентиляторы и Cooler Boost. \
+                      При смене питания профиль переключается сам. Изменения применяются к \
+                      профилю текущего источника.",
+    profile_ac: "профиль: от сети",
+    profile_battery: "профиль: от батареи",
+
+    touchpad: "Тачпад",
+    touchpad_info: "Включает и выключает сенсорную панель — как Ctrl+Win+F24 или клавиша на \
+                    клавиатуре.",
+    fn_lock: "Fn Lock",
+    fn_lock_info: "Показывает, зафиксирована ли клавиша Fn. Переключается сочетанием Fn+Esc — \
+                   программно прошивка его не меняет.",
+    on: "вкл",
+    off: "выкл",
+
+    ranges: ["5 мин", "1 ч", "24 ч"],
+    export_csv: "Экспорт CSV",
+    exported: |path| format!("Сохранено: {path}"),
+
+    check_updates: "Проверять обновления",
+    check_updates_info: "Раз в сутки приложение смотрит последний релиз на GitHub и показывает \
+                         ссылку, если вышла новая версия. Ничего не скачивается само.",
+    update_available: |v| format!("Доступна версия {v}"),
 
     err_scenario: "Сценарий",
     err_cooler_boost: "Cooler Boost",
@@ -185,6 +239,9 @@ pub static RU: Strings = Strings {
     err_auto_fan: "Авто-режим вентиляторов",
     err_battery: "Лимит заряда",
     err_autostart: "Автозапуск",
+    err_restore: "Восстановление профиля",
+    err_touchpad: "Тачпад",
+    err_export: "Экспорт",
 };
 
 pub static EN: Strings = Strings {
@@ -194,13 +251,19 @@ pub static EN: Strings = Strings {
     no_access_title: "Cannot reach the laptop firmware",
     no_access_hint: "Requires an MSI laptop with WMI interface 2.x, running as Administrator.",
     model_fallback: "MSI laptop",
-    footer: "MSI Center Service may restore its own scenario after reboot or sleep.",
+    footer: "MSI Center Service may restore its own scenario after reboot or sleep — turn on \
+             Restore settings.",
     read_failed: "Failed to read sensors",
 
     telemetry: "Telemetry",
-    telemetry_info: "CPU and GPU temperature over the last 5 minutes, refreshed every 1.5 s. \
-                     The line turns red above 90 °C. Below: fan speed and current duty.",
-    seconds_ago: |s| format!("{s} s ago"),
+    telemetry_info: "CPU and GPU temperature over the selected range (up to 24 hours), refreshed \
+                     every 1.5 s. The line turns red above 90 °C. Below: fan speed and current \
+                     duty. Export CSV saves the whole history as a table.",
+    seconds_ago: |s| match s {
+        0..90 => format!("{s} s ago"),
+        90..5400 => format!("{} min ago", s / 60),
+        _ => format!("{} h {} min ago", s / 3600, s % 3600 / 60),
+    },
 
     mode: "Mode",
     mode_info: "MSI Center scenarios. They switch the firmware power profile: how far the CPU \
@@ -257,6 +320,35 @@ pub static EN: Strings = Strings {
     tray_open: "Open",
     tray_exit: "Quit",
     tray_tooltip: |cpu, gpu| format!("Open MSI Control\nCPU {} · GPU {}", temp(cpu), temp(gpu)),
+    open_app: "Open app",
+
+    restore: "Restore settings",
+    restore_info: "After boot, wake from sleep and power-source changes the app re-applies your \
+                   mode, fan curve, Cooler Boost and charge limit — even if MSI Center Service \
+                   overwrote them.",
+    per_source: "Separate battery profile",
+    per_source_info: "Mode, fans and Cooler Boost are remembered separately on AC and on battery, \
+                      and switch automatically with the power source. Changes go to the profile of \
+                      the current source.",
+    profile_ac: "profile: AC",
+    profile_battery: "profile: battery",
+
+    touchpad: "Touchpad",
+    touchpad_info: "Turns the touchpad on or off — same as Ctrl+Win+F24 or the keyboard key.",
+    fn_lock: "Fn Lock",
+    fn_lock_info: "Shows whether the Fn key is locked. Toggle it with Fn+Esc — the firmware does \
+                   not let software change it.",
+    on: "on",
+    off: "off",
+
+    ranges: ["5 min", "1 h", "24 h"],
+    export_csv: "Export CSV",
+    exported: |path| format!("Saved: {path}"),
+
+    check_updates: "Check for updates",
+    check_updates_info: "Once a day the app looks at the latest GitHub release and shows a link if \
+                         a newer version exists. Nothing is downloaded automatically.",
+    update_available: |v| format!("Version {v} available"),
 
     err_scenario: "Scenario",
     err_cooler_boost: "Cooler Boost",
@@ -268,6 +360,9 @@ pub static EN: Strings = Strings {
     err_auto_fan: "Auto fan mode",
     err_battery: "Charge limit",
     err_autostart: "Start with Windows",
+    err_restore: "Restoring profile",
+    err_touchpad: "Touchpad",
+    err_export: "Export",
 };
 
 fn temp(t: Option<u8>) -> String {
@@ -284,13 +379,5 @@ mod tests {
         assert_eq!(Lang::from_windows_ui(0x0819), Lang::Ru); // ru-MD
         assert_eq!(Lang::from_windows_ui(0x0409), Lang::En); // en-US
         assert_eq!(Lang::from_windows_ui(0x0422), Lang::En); // uk-UA → English fallback
-    }
-
-    #[test]
-    fn language_codes_round_trip() {
-        for lang in Lang::ALL {
-            assert_eq!(Lang::from_code(lang.code()), Some(lang));
-        }
-        assert_eq!(Lang::from_code("de"), None);
     }
 }

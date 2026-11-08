@@ -2,11 +2,14 @@
 
 mod battery;
 mod fans;
+pub mod flyout;
 mod header;
 mod mode;
 mod settings;
 mod system;
 mod telemetry;
+
+pub use flyout::Flyout;
 
 use std::time::Duration;
 
@@ -44,7 +47,7 @@ impl MsiApp {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let t = theme();
-        let error = self.error.clone().map(|e| {
+        let banner = |glyph: Icon, tint, bg, text: SharedString| {
             div()
                 .flex()
                 .items_center()
@@ -52,11 +55,20 @@ impl MsiApp {
                 .px(px(12.))
                 .py(px(8.))
                 .rounded(radius::control())
-                .bg(t.danger_dim)
+                .bg(bg)
                 .text_size(px(13.))
                 .text_color(t.text)
-                .child(icon(Icon::Warning, 15., t.danger))
-                .child(e)
+                .child(icon(glyph, 15., tint))
+                .child(div().flex_1().min_w_0().child(text))
+        };
+        let error = self.error.clone().map(|e| banner(Icon::Warning, t.danger, t.danger_dim, e));
+        let notice = self.notice.clone().map(|n| banner(Icon::Info, t.accent, t.inset, n));
+        let update = self.update.as_ref().map(|r| {
+            banner(Icon::Download, t.accent, t.inset, (self.tr().update_available)(r.version()).into())
+                .id("update")
+                .cursor_pointer()
+                .hover(|d| d.bg(t.raised))
+                .on_click(cx.listener(|this, _, _, cx| this.open_update(cx)))
         });
 
         let scroll = div().id("body").size_full().overflow_y_scroll().child(
@@ -68,22 +80,27 @@ impl MsiApp {
                 .pt(px(4.))
                 .pb(px(14.))
                 .children(error)
+                .children(notice)
+                .children(update)
                 .child(enter(self.render_telemetry(window, cx), 0))
                 .child(enter(self.render_mode(window, cx), 1))
                 .child(enter(self.render_fans(window, cx), 2))
                 .child(enter(self.render_battery(window, cx), 3))
                 .child(enter(self.render_system(window, cx), 4))
                 .child(enter(self.render_settings(window, cx), 5))
-                .child(
-                    div()
-                        .flex()
-                        .gap(px(6.))
-                        .px(px(4.))
-                        .text_size(px(12.))
-                        .text_color(t.text_faint)
-                        .child(icon(Icon::Info, 13., t.text_faint))
-                        .child(div().flex_1().min_w_0().child(self.tr().footer)),
-                ),
+                // Without restore, MSI Center Service's rewrites stick; say so.
+                .when(!self.settings.restore, |d| {
+                    d.child(
+                        div()
+                            .flex()
+                            .gap(px(6.))
+                            .px(px(4.))
+                            .text_size(px(12.))
+                            .text_color(t.text_faint)
+                            .child(icon(Icon::Info, 13., t.text_faint))
+                            .child(div().flex_1().min_w_0().child(self.tr().footer)),
+                    )
+                }),
         );
 
         // Content scrolling under the header fades out instead of being cut at a hard edge.

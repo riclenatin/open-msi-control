@@ -56,6 +56,9 @@ icons! {
     Gear => "gear.svg",
     Power => "power.svg",
     Tray => "tray.svg",
+    Touchpad => "hand-pointing.svg",
+    Lock => "lock-simple.svg",
+    Download => "download.svg",
     Minimize => "minus.svg",
     Close => "x.svg",
 }
