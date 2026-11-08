@@ -31,6 +31,7 @@ impl MsiApp {
             *self.settings.slot(on_ac) != Some(profile) || self.settings.charge_limit != Some(limit);
         if changed {
             *self.settings.slot(on_ac) = Some(profile);
+            self.settings.charge_limit = Some(limit);
             self.settings.save();
         }
     }
@@ -50,12 +51,12 @@ impl MsiApp {
         }
 
         let Some(s) = self.snap.clone() else { return };
-        let Some(profile) = *self.settings.slot(on_ac) else {
+        let (Some(profile), Some(limit)) = (*self.settings.slot(on_ac), self.settings.charge_limit) else {
             // First run (or first time on battery with separate profiles): start from reality.
             self.capture_profile();
             return;
         };
-        let ops = plan(&s, &profile, self.settings.charge_limit);
+        let ops = plan(&s, &profile, Some(limit));
         if ops.is_empty() {
             return;
         }
