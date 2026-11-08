@@ -1,0 +1,15 @@
+[package]
+name = "msi-probe"
+description = "Read-only dump of the MSI_ACPI interface and EC RAM, for adding support for new models"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+msi-acpi.workspace = true
+
+[lints]
+workspace = true

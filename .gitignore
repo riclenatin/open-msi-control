@@ -1,0 +1,14 @@
+/target
+**/*.rs.bk
+*.pdb
+
+# Local probe dumps may identify a machine; commit them only as test fixtures.
+/probe-*.txt
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+.DS_Store
+Thumbs.db

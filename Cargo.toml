@@ -1,0 +1,43 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+default-members = ["crates/app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+authors = ["open-msi-control contributors"]
+publish = false
+
+[workspace.dependencies]
+msi-acpi = { path = "crates/msi-acpi" }
+
+anyhow = "1.0"
+embed-resource = "3"
+gpui = { version = "0.2.2", default-features = false }
+image = { version = "0.25", default-features = false }
+thiserror = "2"
+windows = "0.61"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_qualifications = "warn"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "warn"
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+# gpui is heavy; optimise dependencies in dev so the UI stays fluid while iterating.
+[profile.dev.package."*"]
+opt-level = 2
