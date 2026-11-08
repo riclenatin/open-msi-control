@@ -7,7 +7,7 @@ MSI laptops. Native Rust, GPU-rendered UI ([gpui](https://gpui.rs)), no backgrou
 
 ## Features
 
-- **Live telemetry** — CPU/GPU temperature gauges, 5-minute temperature timeline with hover
+- **Live telemetry** — CPU/GPU temperature gauges, 5-minute temperature timeline (red above 90 °C) with hover
   readout, fan RPM and EC target duty.
 - **Scenarios** — Extreme Performance, Balanced, Silent, Super Battery (the same registers MSI
   Center writes).
@@ -15,6 +15,8 @@ MSI laptops. Native Rust, GPU-rendered UI ([gpui](https://gpui.rs)), no backgrou
   stay monotonic and never exceed the firmware's top point. Auto mode and Cooler Boost.
 - **Battery charge limit** — slider (40–100 %) and the Battery Master presets (100/80/60 %).
 - **System** — keyboard backlight, webcam kill switch, Win/Fn swap, USB power share.
+- Russian and English UI (follows the Windows display language, switchable in System), (i) hints
+  explaining every setting.
 - Keyboard navigation (Tab, arrows, Enter/Space) with focus rings, WCAG AA contrast, honours the
   Windows "Animation effects" setting.
 

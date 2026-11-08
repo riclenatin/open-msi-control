@@ -4,7 +4,6 @@ use crate::theme::theme;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tone {
-    Accent,
     Neutral,
     Warning,
     Danger,
@@ -14,7 +13,6 @@ pub enum Tone {
 pub fn pill(tone: Tone, label: impl Into<SharedString>) -> Div {
     let t = theme();
     let (fg, bg) = match tone {
-        Tone::Accent => (t.accent, t.accent_dim),
         Tone::Neutral => (t.text_muted, t.inset),
         Tone::Warning => (t.warning, t.inset),
         Tone::Danger => (t.danger, t.danger_dim),

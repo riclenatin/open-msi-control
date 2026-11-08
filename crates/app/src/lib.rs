@@ -6,6 +6,7 @@ mod app;
 mod assets;
 mod charts;
 mod dither;
+mod i18n;
 mod motion;
 mod platform;
 mod telemetry;

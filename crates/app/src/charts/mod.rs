@@ -9,7 +9,7 @@ mod timeline;
 pub use curve::{CurveChart, TEMP_MAX, TEMP_MIN};
 pub use gauge::tick_gauge;
 pub use meter::{bars, segment_meter};
-pub use timeline::{TEMP_DOMAIN, TimelineChart};
+pub use timeline::{TEMP_DOMAIN, TEMP_HOT, TimelineChart};
 
 use gpui::{Bounds, Pixels, Point, point};
 

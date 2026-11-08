@@ -30,7 +30,6 @@ pub mod palette {
     pub const TEXT_FAINT: Oklch = oklch(0.64, 0.004, 286.0);
 
     pub const ACCENT: Oklch = oklch(0.82, 0.15, ACCENT_HUE);
-    pub const ACCENT_DIM: Oklch = oklch(0.82, 0.15, ACCENT_HUE).alpha(0.16);
     pub const ON_ACCENT: Oklch = oklch(0.2, 0.03, ACCENT_HUE);
     pub const SECONDARY: Oklch = oklch(0.78, 0.11, 250.0);
     pub const WARNING: Oklch = oklch(0.82, 0.14, 75.0);
@@ -55,7 +54,6 @@ pub struct Theme {
     pub text_muted: Rgba,
     pub text_faint: Rgba,
     pub accent: Rgba,
-    pub accent_dim: Rgba,
     pub on_accent: Rgba,
     pub secondary: Rgba,
     pub warning: Rgba,
@@ -82,7 +80,6 @@ impl Theme {
             text_muted: p::TEXT_MUTED.to_rgba(),
             text_faint: p::TEXT_FAINT.to_rgba(),
             accent: p::ACCENT.to_rgba(),
-            accent_dim: p::ACCENT_DIM.to_rgba(),
             on_accent: p::ON_ACCENT.to_rgba(),
             secondary: p::SECONDARY.to_rgba(),
             warning: p::WARNING.to_rgba(),
@@ -163,8 +160,7 @@ mod tests {
         let t = theme();
         assert!(contrast(t.on_accent, t.accent) >= 4.5);
         assert!(contrast(t.on_silver, t.silver_bottom) >= 4.5, "label on darkest silver stop");
-        // Tinted pills: accent text on its own 16 % tint over a card.
-        assert!(contrast(t.accent, over(t.accent_dim, t.card)) >= 4.5);
+        // Tinted pill: danger text on its own 16 % tint over a card.
         assert!(contrast(t.danger, over(t.danger_dim, t.card)) >= 4.5);
     }
 }

@@ -52,6 +52,7 @@ icons! {
     Warning => "warning-circle.svg",
     Reset => "arrow-counter-clockwise.svg",
     Info => "info.svg",
+    Globe => "globe.svg",
     Minimize => "minus.svg",
     Close => "x.svg",
 }

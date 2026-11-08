@@ -8,6 +8,7 @@ mod segmented;
 mod surface;
 mod switch;
 mod text;
+mod tooltip;
 
 use std::rc::Rc;
 
@@ -18,8 +19,9 @@ pub use drag::{DragEvent, register_drag};
 pub use pill::{Tone, pill};
 pub use segmented::{Width, segmented};
 pub use surface::{card, icon, inset};
-pub use switch::switch_row;
+pub use switch::SwitchRow;
 pub use text::{mono, tnum};
+pub use tooltip::info;
 
 /// Callback shared by components that need to call back into the app from window-level
 /// listeners (which must be `'static` and are re-registered every frame).

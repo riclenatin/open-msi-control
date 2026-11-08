@@ -66,7 +66,9 @@ Release builds need `fxc.exe` from the Windows 10/11 SDK (gpui compiles its shad
   readings to avoid jumps.
 - Every interactive element is reachable with Tab, has a visible focus ring while navigating by
   keyboard, and responds to Enter/Space or arrows.
-- UI strings are Russian for now; keep them short and in sentence case.
+- All UI text lives in `crates/app/src/i18n.rs` (`Strings` table per language; a missing
+  translation is a compile error). Add every new string to both `RU` and `EN`, keep them short,
+  sentence case. Explanations go into (i) tooltips (`ui::info`), not into extra visible text.
 
 ## Tests
 

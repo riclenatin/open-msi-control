@@ -62,11 +62,6 @@ impl CurveChart {
         })
     }
 
-    /// Duty for a pointer at unit y (screen y grows downwards).
-    pub fn duty_at(y_down: f32) -> u8 {
-        ((1.0 - y_down) * 100.0).round().clamp(0.0, 100.0) as u8
-    }
-
     fn active(&self) -> Option<usize> {
         let temp = self.current_temp?;
         let x = unit(f32::from(temp), X);

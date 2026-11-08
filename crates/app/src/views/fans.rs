@@ -6,7 +6,7 @@ use crate::assets::Icon;
 use crate::charts::{CurveChart, TEMP_MAX, TEMP_MIN, unit};
 use crate::motion::{self, Spec};
 use crate::theme::theme;
-use crate::ui::{Button, DragEvent, Variant, Width, card, inset, mono, segmented, switch_row};
+use crate::ui::{Button, DragEvent, SwitchRow, Variant, Width, card, inset, mono, segmented};
 
 const CHART_H: f32 = 132.;
 
@@ -17,13 +17,14 @@ impl MsiApp {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let t = theme();
+        let tr = self.tr();
         let Some(s) = self.snap.clone() else { return div() };
         let Some(curves) = self.curves() else { return div() };
         let fan = self.fan_index();
         let status = if fan == 0 { &s.cpu } else { &s.gpu };
         let dirty = self.draft.is_some();
         let ring = self.keyboard_nav;
-        let dragging = matches!(self.drag, Some(Drag::Curve(_)));
+        let dragging = matches!(self.drag, Some(Drag::Curve { .. }));
 
         let chart = CurveChart {
             temps: status.curve.temps,
@@ -127,7 +128,7 @@ impl MsiApp {
         );
         let mode = segmented(
             "fan-mode",
-            &[SharedString::from("Авто"), SharedString::from("Своя кривая")],
+            &[SharedString::from(tr.fan_auto), SharedString::from(tr.fan_custom)],
             Some(usize::from(s.advanced_fan)),
             mode_at,
             Width::Content,
@@ -144,51 +145,55 @@ impl MsiApp {
             f32::from(u8::from(s.cooler_boost)),
             Spec::movement(motion::TOGGLE),
         );
-        let boost = switch_row(
-            "cooler-boost",
-            Icon::Wind,
-            "Cooler Boost",
-            Some("Максимальные обороты поверх кривой".into()),
-            s.cooler_boost,
-            boost_at,
+        let boost = SwitchRow {
+            id: "cooler-boost".into(),
+            icon: Icon::Wind,
+            label: "Cooler Boost",
+            description: Some(tr.cooler_boost_hint),
+            explain: None,
+            on: s.cooler_boost,
+            thumb_at: boost_at,
             ring,
-            MsiApp::handler(cx, |this, (on, kb): (bool, bool), _, cx| this.set_cooler_boost(on, kb, cx)),
-        );
+            on_toggle: MsiApp::handler(cx, |this, (on, kb): (bool, bool), _, cx| {
+                this.set_cooler_boost(on, kb, cx)
+            }),
+        }
+        .render();
 
-        let readout = format!(
-            "цель {}% · {}",
-            status.duty,
-            status.temp_c.map_or("датчик спит".to_owned(), |v| format!("{v}°"))
-        );
-        card(Icon::Fan, "Вентиляторы", Some(tabs.into_any_element()))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .child(mono(readout).text_size(px(12.)).text_color(t.accent))
-                    .child(div().text_size(px(11.)).text_color(t.text_faint).child("тяните точки")),
-            )
+        // Pending edits get their own row so the buttons never crowd the mode switch.
+        let unsaved = dirty.then(|| {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .pl(px(10.))
+                .pr(px(4.))
+                .py(px(4.))
+                .rounded(px(20.))
+                .bg(t.inset)
+                .child(div().size(px(6.)).rounded_full().bg(t.warning))
+                .child(div().flex_1().min_w_0().text_size(px(12.)).text_color(t.text_muted).child(tr.unsaved))
+                .child(
+                    Button::new("curve-reset", tr.reset, Variant::Secondary)
+                        .icon(Icon::Reset)
+                        .ring(ring)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.draft = None;
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Button::new("curve-apply", tr.apply, Variant::Primary)
+                        .ring(ring)
+                        .on_click(cx.listener(|this, _, _, cx| this.apply_curves(cx))),
+                )
+        });
+
+        card(Icon::Fan, tr.fans, Some(tr.fans_info), Some(tabs.into_any_element()))
+            .child(mono((tr.fan_readout)(status.duty, status.temp_c)).text_size(px(12.)).text_color(t.accent))
             .child(editor)
-            .child(div().flex().items_center().gap(px(8.)).child(mode).child(div().flex_1()).when(
-                dirty,
-                |d| {
-                    d.child(
-                        Button::new("curve-reset", "Сброс", Variant::Secondary)
-                            .icon(Icon::Reset)
-                            .ring(ring)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.draft = None;
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        Button::new("curve-apply", "Применить", Variant::Primary)
-                            .ring(ring)
-                            .on_click(cx.listener(|this, _, _, cx| this.apply_curves(cx))),
-                    )
-                },
-            ))
+            .children(unsaved)
+            .child(div().flex().child(mode))
             .child(inset().child(boost))
     }
 }

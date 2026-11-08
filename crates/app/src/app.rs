@@ -9,6 +9,7 @@ use gpui::{
 };
 use msi_acpi::{CURVE_POINTS, Fan, HwWorker, Info, MsiLaptop, Scenario, Snapshot};
 
+use crate::i18n::{Lang, Strings};
 use crate::motion::Transitions;
 use crate::telemetry::{History, POLL};
 use crate::theme::theme;
@@ -30,9 +31,15 @@ pub enum Connection {
     Failed(SharedString),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Drag {
-    Curve(usize),
+    /// Dragging a fan-curve point: which point, the curves when the drag started and the
+    /// pointer's starting height (0..=1, y down).
+    Curve {
+        point: usize,
+        base: Curves,
+        start_y: f32,
+    },
     Battery,
 }
 
@@ -58,7 +65,10 @@ pub struct MsiApp {
     /// The next frame snaps all transitions (input came from the keyboard).
     pub(crate) snap_frame: bool,
     pub(crate) dither: Arc<RenderImage>,
+    /// Focus root for keyboard navigation. Tracked on the body, not the window root: gpui's
+    /// focus-on-click calls `prevent_default`, which would swallow title-bar drags.
     pub(crate) focus: FocusHandle,
+    pub(crate) lang: Lang,
     /// Bumped on every write; polls requested before a write are discarded.
     write_gen: u64,
     _poll: Option<Task<()>>,
@@ -87,6 +97,9 @@ impl MsiApp {
             snap_frame: false,
             dither: dither::render(),
             focus,
+            lang: platform::load_setting("language")
+                .and_then(|code| Lang::from_code(&code))
+                .unwrap_or_else(|| Lang::from_windows_ui(platform::ui_language())),
             write_gen: 0,
             _poll: None,
             battery_write: None,
@@ -97,6 +110,16 @@ impl MsiApp {
         })
         .detach();
         this
+    }
+
+    pub(crate) fn tr(&self) -> &'static Strings {
+        self.lang.strings()
+    }
+
+    pub(crate) fn set_lang(&mut self, lang: Lang, cx: &mut Context<Self>) {
+        self.lang = lang;
+        platform::save_setting("language", lang.code());
+        cx.notify();
     }
 
     fn on_connected(&mut self, res: msi_acpi::Result<HwWorker>, cx: &mut Context<Self>) {
@@ -129,7 +152,7 @@ impl MsiApp {
                                 this.snap = Some(snap);
                             }
                         }
-                        Err(e) => this.error = Some(format!("Не удалось прочитать датчики: {e}").into()),
+                        Err(e) => this.error = Some(format!("{}: {e}", this.tr().read_failed).into()),
                     }
                     cx.notify();
                 });
@@ -145,7 +168,7 @@ impl MsiApp {
     /// hardware thread and replaces the snapshot with what the EC reports.
     pub(crate) fn act(
         &mut self,
-        what: &'static str,
+        what: fn(&Strings) -> &'static str,
         predict: impl FnOnce(&mut Snapshot),
         write: impl FnOnce(&MsiLaptop) -> msi_acpi::Result<()> + Send + 'static,
         cx: &mut Context<Self>,
@@ -173,7 +196,7 @@ impl MsiApp {
                 match res {
                     Ok(s) if this.write_gen == generation => this.snap = Some(s),
                     Ok(_) => {}
-                    Err(e) => this.error = Some(format!("{what}: {e}").into()),
+                    Err(e) => this.error = Some(format!("{}: {e}", what(this.tr())).into()),
                 }
                 cx.notify();
             })
@@ -197,32 +220,32 @@ impl MsiApp {
 
     pub(crate) fn set_scenario(&mut self, s: Scenario, keyboard: bool, cx: &mut Context<Self>) {
         self.snap_frame |= keyboard;
-        self.act("Сценарий", |snap| snap.scenario = Some(s), move |l| l.set_scenario(s), cx);
+        self.act(|t| t.err_scenario, |snap| snap.scenario = Some(s), move |l| l.set_scenario(s), cx);
     }
 
     pub(crate) fn set_cooler_boost(&mut self, on: bool, keyboard: bool, cx: &mut Context<Self>) {
         self.snap_frame |= keyboard;
-        self.act("Cooler Boost", |s| s.cooler_boost = on, move |l| l.set_cooler_boost(on), cx);
+        self.act(|t| t.err_cooler_boost, |s| s.cooler_boost = on, move |l| l.set_cooler_boost(on), cx);
     }
 
     pub(crate) fn set_kbd_backlight(&mut self, level: u8, keyboard: bool, cx: &mut Context<Self>) {
         self.snap_frame |= keyboard;
-        self.act("Подсветка", |s| s.kbd_backlight = level, move |l| l.set_kbd_backlight(level), cx);
+        self.act(|t| t.err_backlight, |s| s.kbd_backlight = level, move |l| l.set_kbd_backlight(level), cx);
     }
 
     pub(crate) fn set_webcam(&mut self, on: bool, keyboard: bool, cx: &mut Context<Self>) {
         self.snap_frame |= keyboard;
-        self.act("Веб-камера", |s| s.webcam = Some(on), move |l| l.set_webcam(on), cx);
+        self.act(|t| t.err_webcam, |s| s.webcam = Some(on), move |l| l.set_webcam(on), cx);
     }
 
     pub(crate) fn set_win_fn(&mut self, swapped: bool, keyboard: bool, cx: &mut Context<Self>) {
         self.snap_frame |= keyboard;
-        self.act("Win/Fn", |s| s.win_fn_swapped = swapped, move |l| l.set_win_fn_swap(swapped), cx);
+        self.act(|t| t.err_win_fn, |s| s.win_fn_swapped = swapped, move |l| l.set_win_fn_swap(swapped), cx);
     }
 
     pub(crate) fn set_usb_share(&mut self, on: bool, keyboard: bool, cx: &mut Context<Self>) {
         self.snap_frame |= keyboard;
-        self.act("Зарядка по USB", |s| s.usb_share = Some(on), move |l| l.set_usb_share(on), cx);
+        self.act(|t| t.err_usb, |s| s.usb_share = Some(on), move |l| l.set_usb_share(on), cx);
     }
 
     // ---- fan curve -----------------------------------------------------------------------
@@ -238,8 +261,10 @@ impl MsiApp {
         }
     }
 
-    pub(crate) fn set_point(&mut self, i: usize, duty: u8, cx: &mut Context<Self>) {
-        let Some(mut c) = self.curves() else { return };
+    /// Sets point `i` on top of `base` and keeps the curve monotonic. Re-deriving from `base`
+    /// (the curve when the drag started) lets neighbours spring back if the point moves back.
+    fn set_point_on(&mut self, base: Curves, i: usize, duty: u8, cx: &mut Context<Self>) {
+        let mut c = base;
         let fan = self.fan_index();
         // Never above the firmware's top point, or the fan would slow down when hottest.
         let ceiling = self.snap.as_ref().map_or(100, |s| match self.curve_fan {
@@ -264,14 +289,14 @@ impl MsiApp {
     pub(crate) fn nudge_point(&mut self, delta: i16, cx: &mut Context<Self>) {
         let Some(c) = self.curves() else { return };
         let cur = i16::from(c[self.fan_index()][self.curve_selected]);
-        self.set_point(self.curve_selected, (cur + delta).clamp(0, 100) as u8, cx);
+        self.set_point_on(c, self.curve_selected, (cur + delta).clamp(0, 100) as u8, cx);
     }
 
     pub(crate) fn apply_curves(&mut self, cx: &mut Context<Self>) {
         let Some(c) = self.curves() else { return };
         self.draft = None;
         self.act(
-            "Кривая вентиляторов",
+            |t| t.err_curve,
             |s| {
                 s.cpu.curve.speeds = c[0];
                 s.gpu.curve.speeds = c[1];
@@ -284,7 +309,7 @@ impl MsiApp {
 
     pub(crate) fn auto_fan(&mut self, cx: &mut Context<Self>) {
         self.draft = None;
-        self.act("Авто-режим вентиляторов", |s| s.advanced_fan = false, |l| l.set_auto_fan(), cx);
+        self.act(|t| t.err_auto_fan, |s| s.advanced_fan = false, |l| l.set_auto_fan(), cx);
     }
 
     pub(crate) fn on_curve_drag(
@@ -294,15 +319,19 @@ impl MsiApp {
         cx: &mut Context<Self>,
     ) {
         match e {
+            // Pressing only grabs the band; the value changes by how far the pointer moves.
             DragEvent::Press(p) => {
-                if let Some(i) = chart.band_at(p.x) {
-                    self.drag = Some(Drag::Curve(i));
-                    self.set_point(i, crate::charts::CurveChart::duty_at(p.y), cx);
+                if let (Some(point), Some(base)) = (chart.band_at(p.x), self.curves()) {
+                    self.drag = Some(Drag::Curve { point, base, start_y: p.y });
+                    self.curve_selected = point;
+                    cx.notify();
                 }
             }
             DragEvent::Move(p) => {
-                if let Some(Drag::Curve(i)) = self.drag {
-                    self.set_point(i, crate::charts::CurveChart::duty_at(p.y), cx);
+                if let Some(Drag::Curve { point, base, start_y }) = self.drag {
+                    let start = f32::from(base[self.fan_index()][point]);
+                    let duty = (start + (start_y - p.y) * 100.0).round().clamp(0.0, 100.0) as u8;
+                    self.set_point_on(base, point, duty, cx);
                 }
             }
             DragEvent::Release => {
@@ -323,7 +352,7 @@ impl MsiApp {
     fn write_battery(&mut self, value: u8, cx: &mut Context<Self>) {
         self.battery_write = None;
         let limit = (value < 100).then_some(value);
-        self.act("Лимит заряда", |s| s.battery_limit = limit, move |l| l.set_battery_limit(limit), cx);
+        self.act(|t| t.err_battery, |s| s.battery_limit = limit, move |l| l.set_battery_limit(limit), cx);
         self.battery_preview = None;
     }
 
@@ -382,7 +411,6 @@ impl Render for MsiApp {
 
         div()
             .id("root")
-            .track_focus(&self.focus)
             .key_context("App")
             .on_action(cx.listener(|this, _: &FocusNext, window, cx| {
                 this.keyboard_nav = true;
@@ -410,6 +438,6 @@ impl Render for MsiApp {
             .text_color(theme().text)
             .font_family(crate::theme::FONT_SANS)
             .child(self.render_header(window, cx))
-            .child(body)
+            .child(div().flex_1().min_h_0().flex().flex_col().track_focus(&self.focus).child(body))
     }
 }

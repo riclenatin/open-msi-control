@@ -4,8 +4,8 @@
 use std::time::Instant;
 
 use gpui::{
-    Bounds, Hitbox, HitboxBehavior, MouseMoveEvent, PathBuilder, Pixels, Rgba, Window, canvas, fill,
-    linear_color_stop, linear_gradient, prelude::*, px,
+    Bounds, ContentMask, Hitbox, HitboxBehavior, MouseMoveEvent, PathBuilder, Pixels, Rgba, Window, canvas,
+    fill, linear_color_stop, linear_gradient, prelude::*, px,
 };
 
 use super::{at, unit};
@@ -14,7 +14,9 @@ use crate::theme::theme;
 use crate::ui::Handler;
 
 pub const TEMP_DOMAIN: (f32, f32) = (30.0, 100.0);
-pub const GUIDES: [f32; 3] = [50.0, 70.0, 90.0];
+pub const GUIDES: [f32; 2] = [50.0, 70.0];
+/// Above this the lines turn red (same threshold as the header gauges).
+pub const TEMP_HOT: f32 = 90.0;
 
 #[derive(Debug)]
 pub struct TimelineChart {
@@ -71,13 +73,16 @@ impl TimelineChart {
 
     fn paint(&self, bounds: Bounds<Pixels>, window: &mut Window) {
         let t = theme();
-        for g in GUIDES {
+        let hot_y = unit(TEMP_HOT, TEMP_DOMAIN);
+        for (g, color) in
+            GUIDES.iter().map(|&g| (g, t.hairline)).chain([(TEMP_HOT, Rgba { a: 0.45, ..t.danger })])
+        {
             let y = unit(g, TEMP_DOMAIN);
             let mut pb = PathBuilder::stroke(px(1.)).dash_array(&[px(2.), px(4.)]);
             pb.move_to(at(bounds, 0.0, y));
             pb.line_to(at(bounds, 1.0, y));
             if let Ok(p) = pb.build() {
-                window.paint_path(p, t.hairline);
+                window.paint_path(p, color);
             }
         }
 
@@ -104,11 +109,22 @@ impl TimelineChart {
         if gpu.len() >= 2 {
             stroke_series(window, bounds, &gpu, px(1.5), Some([px(5.), px(4.)]), t.secondary);
         }
+        // Above the hot threshold the same lines are repainted red, clipped to that band.
+        let hot_band = Bounds::from_corners(at(bounds, 0.0, 1.0), at(bounds, 1.0, hot_y));
+        window.with_content_mask(Some(ContentMask { bounds: hot_band }), |window| {
+            if cpu.len() >= 2 {
+                stroke_series(window, bounds, &cpu, px(2.), None, t.danger);
+            }
+            if gpu.len() >= 2 {
+                stroke_series(window, bounds, &gpu, px(1.5), Some([px(5.), px(4.)]), t.danger);
+            }
+        });
 
         // Current-value dots at the right edge.
+        let tone = |y: f32, normal: Rgba| if y >= hot_y { t.danger } else { normal };
         for (series, color) in [(&cpu, t.accent), (&gpu, t.secondary)] {
             if let Some(&(x, y)) = series.last() {
-                dot(window, at(bounds, x, y), 3.5, color);
+                dot(window, at(bounds, x, y), 3.5, tone(y, color));
             }
         }
 
@@ -123,7 +139,7 @@ impl TimelineChart {
                 if let Some(&(x, y)) =
                     series.iter().min_by(|a, b| (a.0 - hx).abs().total_cmp(&(b.0 - hx).abs()))
                 {
-                    dot(window, at(bounds, x, y), 4., color);
+                    dot(window, at(bounds, x, y), 4., tone(y, color));
                 }
             }
         }

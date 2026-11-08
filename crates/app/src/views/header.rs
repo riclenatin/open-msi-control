@@ -10,10 +10,12 @@ use crate::assets::Icon;
 use crate::charts::tick_gauge;
 use crate::motion::{self, Spec};
 use crate::theme::{FONT_MONO, theme};
-use crate::ui::{Tone, icon, mono, pill, tnum};
+use crate::ui::{Tone, icon, mono, pill};
 
-pub const HEIGHT: f32 = 140.;
-const GAUGE: f32 = 82.;
+pub const HEIGHT: f32 = 128.;
+const GAUGE_W: f32 = 70.;
+/// A 240° arc is 1.5 radii tall.
+const GAUGE_H: f32 = 56.;
 
 fn window_button(
     id: &'static str,
@@ -34,25 +36,27 @@ fn window_button(
         .child(icon(glyph, 13., t.text))
 }
 
-fn gauge(label: &'static str, value: Option<f32>, raw: Option<u8>, rpm: u32) -> impl IntoElement {
+/// Temperature in the middle of the arc, sensor name between its feet.
+fn gauge(label: &'static str, value: Option<f32>, raw: Option<u8>) -> impl IntoElement {
     let t = theme();
-    div().relative().size(px(GAUGE)).child(tick_gauge(value, (30., 100.), 75., 90.)).child(
-        div()
-            .absolute()
-            .inset_0()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .child(
-                mono(raw.map_or("—".to_owned(), |v| format!("{v}°")))
-                    .text_size(px(19.))
-                    .line_height(px(21.))
-                    .text_color(t.text),
-            )
-            .child(mono(label).text_size(px(10.)).text_color(t.text_muted))
-            .child(mono(format!("{rpm}")).map(tnum).text_size(px(10.)).text_color(t.text_faint)),
-    )
+    div()
+        .relative()
+        .w(px(GAUGE_W))
+        .h(px(GAUGE_H))
+        .child(tick_gauge(value, (30., 100.), 75., 90.))
+        .child(div().absolute().top(px(20.)).left_0().right_0().flex().justify_center().child(
+            mono(raw.map_or("—".to_owned(), |v| format!("{v}°"))).text_size(px(17.)).text_color(t.text),
+        ))
+        .child(
+            div()
+                .absolute()
+                .bottom_0()
+                .left_0()
+                .right_0()
+                .flex()
+                .justify_center()
+                .child(mono(label).text_size(px(10.)).text_color(t.text_muted)),
+        )
 }
 
 impl MsiApp {
@@ -62,12 +66,14 @@ impl MsiApp {
         _cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let t = theme();
+        let tr = self.tr();
         let scrim = Rgba { a: 0.0, ..t.background };
 
-        let (status, tone) = match &self.conn {
-            Connection::Ready(_) if self.snap.is_some() => ("В сети", Tone::Accent),
-            Connection::Failed(_) => ("Нет доступа", Tone::Danger),
-            _ => ("Подключение", Tone::Neutral),
+        // Status only matters while it is not "connected and reading".
+        let status = match &self.conn {
+            Connection::Ready(_) if self.snap.is_some() => None,
+            Connection::Failed(_) => Some(pill(Tone::Danger, tr.no_access)),
+            _ => Some(pill(Tone::Neutral, tr.connecting)),
         };
         let firmware = self.info.as_ref().map_or_else(
             || "MSI_ACPI".to_owned(),
@@ -81,12 +87,13 @@ impl MsiApp {
             let (cpu, gpu) = (eased(0, s.cpu.temp_c), eased(1, s.gpu.temp_c));
             div()
                 .flex()
-                .gap(px(4.))
-                .p(px(4.))
-                .rounded(px(18.))
+                .gap(px(2.))
+                .px(px(6.))
+                .py(px(4.))
+                .rounded(px(14.))
                 .bg(Rgba { a: 0.72, ..t.background })
-                .child(gauge("CPU", cpu, s.cpu.temp_c, s.cpu.rpm))
-                .child(gauge("GPU", gpu, s.gpu.temp_c, s.gpu.rpm))
+                .child(gauge("CPU", cpu, s.cpu.temp_c))
+                .child(gauge("GPU", gpu, s.gpu.temp_c))
         });
 
         div()
@@ -98,7 +105,7 @@ impl MsiApp {
             .child(
                 img(self.dither.clone()).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover),
             )
-            .child(div().absolute().bottom_0().left_0().w_full().h(px(44.)).bg(linear_gradient(
+            .child(div().absolute().bottom_0().left_0().w_full().h(px(40.)).bg(linear_gradient(
                 180.,
                 linear_color_stop(scrim, 0.),
                 linear_color_stop(t.background, 1.),
@@ -115,6 +122,7 @@ impl MsiApp {
                     .items_center()
                     .child(
                         div()
+                            .id("title-drag")
                             .flex_1()
                             .h_full()
                             .flex()
@@ -150,14 +158,16 @@ impl MsiApp {
                             .flex_col()
                             .gap(px(4.))
                             .min_w_0()
-                            .child(div().flex().child(pill(tone, status)))
+                            .children(status.map(|p| div().flex().child(p)))
                             .child(
                                 div()
                                     .text_size(px(20.))
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(t.text)
                                     .truncate()
-                                    .child(self.model.clone().unwrap_or_else(|| "MSI laptop".to_owned())),
+                                    .child(
+                                        self.model.clone().unwrap_or_else(|| tr.model_fallback.to_owned()),
+                                    ),
                             )
                             .child(mono(firmware).text_size(px(11.)).text_color(t.text_muted).truncate()),
                     )

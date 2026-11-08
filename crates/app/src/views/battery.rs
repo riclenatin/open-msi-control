@@ -99,7 +99,7 @@ impl MsiApp {
             &[SharedString::from("100 %"), SharedString::from("80 %"), SharedString::from("60 %")],
             preset,
             preset_at,
-            Width::Content,
+            Width::Fill,
             ring,
             window,
             MsiApp::handler(cx, |this, (i, kb): (usize, bool), _, cx| {
@@ -108,23 +108,16 @@ impl MsiApp {
             }),
         );
 
-        let readout =
-            if value >= 100 { "до полного".to_owned() } else { format!("стоп на {value}%") };
+        let tr = self.tr();
         card(
             Icon::Battery,
-            "Батарея",
-            Some(mono(readout).text_size(px(12.)).text_color(t.accent).into_any_element()),
-        )
-        .child(slider)
-        .child(
-            div().flex().items_center().gap(px(10.)).child(presets).child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .text_size(px(11.))
-                    .text_color(t.text_muted)
-                    .child("60–80 % бережнее к батарее"),
+            tr.battery,
+            Some(tr.battery_info),
+            Some(
+                mono((tr.battery_readout)(value)).text_size(px(12.)).text_color(t.accent).into_any_element(),
             ),
         )
+        .child(slider)
+        .child(presets)
     }
 }

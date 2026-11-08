@@ -80,9 +80,7 @@ impl MsiApp {
                         .text_size(px(12.))
                         .text_color(t.text_faint)
                         .child(icon(Icon::Info, 13., t.text_faint))
-                        .child(div().flex_1().min_w_0().child(
-                            "MSI Center Service может вернуть свой сценарий после перезагрузки и сна.",
-                        )),
+                        .child(div().flex_1().min_w_0().child(self.tr().footer)),
                 ),
         );
 
@@ -106,8 +104,8 @@ impl MsiApp {
             .items_center()
             .justify_center()
             .gap(px(12.))
-            .child(pill(Tone::Neutral, "Подключение к EC"))
-            .child(div().text_size(px(13.)).text_color(t.text_muted).child("Читаю MSI_ACPI…"))
+            .child(pill(Tone::Neutral, self.tr().connecting))
+            .child(div().text_size(px(13.)).text_color(t.text_muted).child(self.tr().connecting_hint))
     }
 
     pub(crate) fn render_failure(&self, error: SharedString) -> impl IntoElement + use<> {
@@ -122,14 +120,14 @@ impl MsiApp {
                 .rounded(radius::card())
                 .bg(t.card)
                 .child(icon(Icon::Warning, 26., t.danger))
-                .child(div().text_size(px(15.)).child("Нет доступа к прошивке ноутбука"))
+                .child(div().text_size(px(15.)).child(self.tr().no_access_title))
                 .child(div().text_size(px(13.)).text_color(t.text_muted).text_center().child(error))
                 .child(
                     div()
                         .text_size(px(13.))
                         .text_color(t.text_muted)
                         .text_center()
-                        .child("Нужен ноутбук MSI с интерфейсом WMI 2.x и запуск от имени администратора."),
+                        .child(self.tr().no_access_hint),
                 ),
         )
     }

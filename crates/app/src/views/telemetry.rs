@@ -1,11 +1,11 @@
 use std::time::Instant;
 
-use gpui::{Context, Div, Rgba, Window, div, prelude::*, px, relative};
+use gpui::{Context, Div, Rgba, Window, div, linear_color_stop, linear_gradient, prelude::*, px, relative};
 use msi_acpi::FanStatus;
 
 use crate::app::MsiApp;
 use crate::assets::Icon;
-use crate::charts::{TEMP_DOMAIN, TimelineChart, bars, segment_meter, unit};
+use crate::charts::{TEMP_DOMAIN, TEMP_HOT, TimelineChart, bars, segment_meter, unit};
 use crate::telemetry::WINDOW;
 use crate::theme::theme;
 use crate::ui::{card, inset, mono, tnum};
@@ -53,7 +53,9 @@ impl MsiApp {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let t = theme();
+        let tr = self.tr();
         let Some(s) = self.snap.clone() else { return div() };
+        let label_fade = Rgba { a: 0.0, ..t.card };
 
         let tooltip = self.chart_hover.and_then(|x| {
             let age = (1.0 - x) * WINDOW.as_secs_f32();
@@ -73,13 +75,20 @@ impl MsiApp {
             .h(px(CHART_H))
             .w_full()
             .child(TimelineChart::new(&self.history, self.chart_hover).into_canvas(on_hover))
-            .children([50.0f32, 70.0, 90.0].map(|g| {
-                div()
-                    .absolute()
-                    .left_0()
-                    .top(relative(1.0 - unit(g, TEMP_DOMAIN)))
-                    .mt(px(-13.))
-                    .child(mono(format!("{g:.0}°")).text_size(px(10.)).text_color(t.text_faint))
+            // Axis labels sit on a fade so the lines passing behind them stay out of the way.
+            .child(div().absolute().top_0().bottom_0().left_0().w(px(44.)).bg(linear_gradient(
+                90.,
+                linear_color_stop(t.card, 0.35),
+                linear_color_stop(label_fade, 1.),
+            )))
+            .children([50.0f32, 70.0, TEMP_HOT].map(|g| {
+                div().absolute().left_0().top(relative(1.0 - unit(g, TEMP_DOMAIN))).mt(px(-13.)).child(
+                    mono(format!("{g:.0}°")).text_size(px(10.)).text_color(if g >= TEMP_HOT {
+                        t.danger
+                    } else {
+                        t.text_faint
+                    }),
+                )
             }))
             .children(tooltip.map(|(x, cpu, gpu, ago)| {
                 div()
@@ -93,18 +102,17 @@ impl MsiApp {
                     .bg(t.raised)
                     .text_size(px(11.))
                     .child(
-                        mono(format!("−{ago} с · CPU {} · GPU {}", fmt_temp(cpu), fmt_temp(gpu)))
-                            .text_color(t.text),
+                        mono(format!(
+                            "{} · CPU {} · GPU {}",
+                            (tr.seconds_ago)(ago),
+                            fmt_temp(cpu),
+                            fmt_temp(gpu)
+                        ))
+                        .text_color(t.text),
                     )
             }));
 
-        card(
-            Icon::Chart,
-            "Телеметрия",
-            Some(mono("5 мин · 1,5 с").text_size(px(11.)).text_color(t.text_faint).into_any_element()),
-        )
-        .child(chart)
-        .child(
+        card(Icon::Chart, tr.telemetry, Some(tr.telemetry_info), None).child(chart).child(
             inset()
                 .child(fan_row("CPU", false, &s.cpu, &self.history.recent_rpm(20, false), t.accent))
                 .child(div().h(px(1.)).mx(px(10.)).bg(t.hairline))

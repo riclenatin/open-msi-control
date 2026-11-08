@@ -16,9 +16,11 @@ pub fn tick_gauge(value: Option<f32>, domain: (f32, f32), warn: f32, hot: f32) -
         |_, _, _| {},
         move |bounds, (), window, _| {
             let t = theme();
-            let c = bounds.center();
-            let r_out = bounds.size.width.min(bounds.size.height) / 2.0 - px(2.);
-            let r_in = r_out - px(9.);
+            // A 240° arc reaches 0.5 r below its centre, so it is 2r wide and 1.5r tall:
+            // size the radius to whichever side is tighter and hang the centre from the top.
+            let r_out = (bounds.size.width / 2.0).min(bounds.size.height / 1.5) - px(2.);
+            let c = point(bounds.center().x, bounds.top() + r_out + px(2.));
+            let r_in = r_out - px(8.);
             let lit = value.map_or(0, |v| (unit(v, domain) * TICKS as f32).round() as usize);
             let tone = |v: f32| -> Rgba {
                 if v >= hot {
